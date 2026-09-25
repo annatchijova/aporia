@@ -88,7 +88,7 @@ export interface Candidate {
   priceCents: number | null;
   currency: string | null;
   area: string | null;
-  source: { kind: 'manual'; ref: string };
+  source: { kind: 'manual' | 'gemini'; ref: string };
 }
 
 export interface CandidateResult {

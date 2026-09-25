@@ -175,6 +175,28 @@ async function addCandidate(env: Env, request: Request, roomId: string): Promise
   return json({ snapshot: next });
 }
 
+async function discoverCandidates(env: Env, request: Request, roomId: string): Promise<Response> {
+  const actor = await session(request, env, roomId);
+  if (!actor) return json({ error: 'valid room session required' }, 401);
+  const snapshot = await readRoom(env, roomId);
+  if (!snapshot) return json({ error: 'room not found' }, 404);
+  const knownConstraints = snapshot.constraints.map((constraint) => JSON.stringify(constraint));
+  try {
+    const proposal = await new GeminiProvider(env).propose({ prompt: `Planning goal: ${snapshot.title}`, knownConstraints });
+    const candidates: Candidate[] = proposal.candidates.map((draft) => ({ ...draft, id: crypto.randomUUID(), source: { kind: 'gemini', ref: proposal.provider.requestId ?? proposal.provider.model } }));
+    if (candidates.length === 0) return json({ candidates, warnings: proposal.warnings, provider: proposal.provider, snapshot });
+    const event: RoomEvent = { id: crypto.randomUUID(), roomId, revision: snapshot.revision + 1, actorId: actor.participantId, type: 'candidate.discovered', payload: candidates, createdAt: now() };
+    const next = await commitEvent(env, snapshot, event);
+    return json({ candidates, warnings: proposal.warnings, provider: proposal.provider, snapshot: next });
+  } catch (error) {
+    if (error instanceof ProviderError) {
+      const status = error.code === 'rate_limited' ? 429 : error.code === 'timeout' ? 504 : error.code === 'unavailable' && error.retryable ? 503 : 502;
+      return json({ error: 'Candidate discovery failed. Try again.', code: error.code, retryable: error.retryable }, status);
+    }
+    return json({ error: 'Candidate discovery failed. Try again.', code: 'provider_failure', retryable: false }, 502);
+  }
+}
+
 async function handleApi(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const path = routePath(url).replace(/\/$/, '');
@@ -192,6 +214,8 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
   if (request.method === 'POST' && confirmMatch) return confirmClaim(env, request, confirmMatch[1], confirmMatch[2]);
   const candidateMatch = path.match(/^\/api\/rooms\/([^/]+)\/candidates$/);
   if (request.method === 'POST' && candidateMatch) return addCandidate(env, request, candidateMatch[1]);
+  const discoveryMatch = path.match(/^\/api\/rooms\/([^/]+)\/candidate-discovery$/);
+  if (request.method === 'POST' && discoveryMatch) return discoverCandidates(env, request, discoveryMatch[1]);
   return json({ error: 'not found' }, 404);
 }
 

@@ -69,4 +69,13 @@ describe('GeminiProvider failure boundary', () => {
     expect(body.contents[0].parts[1].inlineData).toEqual({ mimeType: 'image/png', data: 'iVBORw0KGgo=' });
     expect(provider.capabilities().imageExtraction).toBe(true);
   });
+
+  it('parses candidate drafts as untrusted suggestions, never as evaluated results', async () => {
+    const candidateJson = { candidates: [{ title: 'Real place', weekday: 6, startMinute: 1200, endMinute: 1320, priceCents: 250000, currency: 'ARS', area: 'Caballito' }], warnings: [] };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(candidateJson) }] } }] }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await new GeminiProvider({ GEMINI_API_KEY: 'test-key' }).propose({ prompt: 'Dinner', knownConstraints: ['budget <= 300000'] });
+    expect(result.candidates).toEqual([{ title: 'Real place', weekday: 6, startMinute: 1200, endMinute: 1320, priceCents: 250000, currency: 'ARS', area: 'Caballito' }]);
+    expect(result).not.toHaveProperty('evaluation');
+  });
 });

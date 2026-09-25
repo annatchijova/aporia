@@ -1,4 +1,4 @@
-import type { InputArtifact, ExtractionProposal, Candidate } from '../core/model';
+import type { InputArtifact, ExtractionProposal } from '../core/model';
 
 export interface ProviderCapabilities {
   name: string;
@@ -19,8 +19,18 @@ export interface CandidateProposalRequest {
   knownConstraints: string[];
 }
 
+export interface CandidateDraft {
+  title: string;
+  weekday: number;
+  startMinute: number;
+  endMinute: number;
+  priceCents: number | null;
+  currency: string | null;
+  area: string | null;
+}
+
 export interface CandidateProposalResponse {
-  candidates: Candidate[];
+  candidates: CandidateDraft[];
   provider: { name: string; model: string; requestId?: string };
   warnings: string[];
 }
