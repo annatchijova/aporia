@@ -7,7 +7,7 @@ interface GeminiEnv { GEMINI_API_KEY?: string; GEMINI_MODEL?: string; }
 export class GeminiProvider implements IntelligenceProvider {
   private readonly model: string;
   constructor(private readonly env: GeminiEnv) {
-    this.model = env.GEMINI_MODEL ?? 'gemini-2.5-flash';
+    this.model = env.GEMINI_MODEL ?? 'gemini-flash-latest';
   }
 
   capabilities(): ProviderCapabilities {
@@ -25,15 +25,33 @@ export class GeminiProvider implements IntelligenceProvider {
         body: JSON.stringify({ contents, generationConfig: { responseMimeType: 'application/json', responseSchema: schema, temperature: 0 } }),
         signal: controller.signal,
       });
-      if (response.status === 429) throw new ProviderError('rate_limited', 'Gemini rate limit reached');
-      if (!response.ok) throw new ProviderError('unavailable', `Gemini request failed with status ${response.status}`);
-      const payload = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; responseId?: string };
+      if (!response.ok) {
+        // Read the provider body only to classify the failure. Never relay it to the client.
+        const rawError = await response.text();
+        let providerMessage = '';
+        try {
+          const parsed = JSON.parse(rawError) as { error?: { message?: unknown } };
+          providerMessage = typeof parsed.error?.message === 'string' ? parsed.error.message : '';
+        } catch {
+          providerMessage = '';
+        }
+        if (response.status === 429) throw new ProviderError('rate_limited', 'Gemini rate limit reached', true);
+        if (response.status === 503 || response.status === 502 || response.status === 504) throw new ProviderError('unavailable', 'Gemini is temporarily unavailable', true);
+        if (response.status === 404) throw new ProviderError('unavailable', 'Gemini model is unavailable', false);
+        throw new ProviderError('unavailable', providerMessage ? 'Gemini rejected the request' : 'Gemini request failed', response.status >= 500);
+      }
+      let payload: { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; responseId?: string };
+      try {
+        payload = await response.json() as typeof payload;
+      } catch {
+        throw new ProviderError('invalid_output', 'Gemini returned a non-JSON response', false);
+      }
       const text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!text) throw new ProviderError('invalid_output', 'Gemini returned no structured content');
       try { return { data: JSON.parse(text), requestId: payload.responseId }; } catch { throw new ProviderError('invalid_output', 'Gemini returned invalid JSON'); }
     } catch (error) {
       if (error instanceof ProviderError) throw error;
-      if (error instanceof DOMException && error.name === 'AbortError') throw new ProviderError('timeout', 'Gemini request timed out');
+      if (error instanceof DOMException && error.name === 'AbortError') throw new ProviderError('timeout', 'Gemini request timed out', true);
       throw new ProviderError('unavailable', 'Gemini request could not be completed');
     } finally { clearTimeout(timeout); }
   }

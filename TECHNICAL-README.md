@@ -4,7 +4,7 @@
 
 ## Status and epistemic boundary
 
-**Design proposal:** this document describes the intended destination architecture. The repository currently contains scaffolding only; no implementation, runtime, benchmark, or integration evidence is claimed.
+**Status:** L1 is implemented in this repository. Local typecheck, tests, Vite production build, Wrangler/D1 smoke tests, and stale-revision rejection have been observed. Remote Webflow deployment and live Gemini extraction remain unverified in this workspace; L2–L5 are destination architecture, not claimed implementation.
 
 The central boundary is:
 

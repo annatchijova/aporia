@@ -32,7 +32,7 @@ export interface IntelligenceProvider {
 }
 
 export class ProviderError extends Error {
-  constructor(public readonly code: 'unavailable' | 'timeout' | 'invalid_output' | 'rate_limited', message: string) {
+  constructor(public readonly code: 'unavailable' | 'timeout' | 'invalid_output' | 'rate_limited', message: string, public readonly retryable = code === 'timeout' || code === 'rate_limited') {
     super(message);
     this.name = 'ProviderError';
   }

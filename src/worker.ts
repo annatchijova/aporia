@@ -2,6 +2,7 @@ import { applyEvent } from './core/reducer';
 import { assertBoundedText, assertCents, assertMinute, assertWeekday, emptySnapshot, type Candidate, type DecisionSnapshot, type RoomEvent } from './core/model';
 import { canonicalSnapshot } from './core/canonical';
 import { GeminiProvider } from './intelligence/gemini';
+import { ProviderError } from './intelligence/contracts';
 
 interface Env {
   ASSETS: Fetcher;
@@ -110,8 +111,11 @@ async function createProposal(env: Env, request: Request, roomId: string): Promi
     await env.DB.prepare('INSERT INTO proposals (id, room_id, artifact_json, claims_json, provider_json, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(proposal.id, roomId, JSON.stringify(artifact), JSON.stringify(proposal.claims), JSON.stringify(proposal.provider), proposal.status, artifact.createdAt).run();
     return json({ proposal });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'provider failure';
-    return json({ error: message, code: 'provider_failure' }, 502);
+    if (error instanceof ProviderError) {
+      const status = error.code === 'rate_limited' ? 429 : error.code === 'timeout' ? 504 : error.code === 'unavailable' && error.retryable ? 503 : 502;
+      return json({ error: 'Extraction failed. Try again.', code: error.code, retryable: error.retryable }, status);
+    }
+    return json({ error: 'Extraction failed. Try again.', code: 'provider_failure', retryable: false }, 502);
   }
 }
 
