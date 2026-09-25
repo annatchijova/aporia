@@ -1,72 +1,49 @@
 # APORIA
 
-**From scattered inputs to a plan people can actually agree on.**
+**Stop arguing. Start planning.**
 
 [English](README.md) · [Español](README_ES.md) · [Technical README](TECHNICAL-README.md)
 
-Planning with people is messy. The information already exists, but it is spread across messages, screenshots, links, calendars, preferences, polls, and vetoes. APORIA is designed to turn that heterogeneous input into shared, explainable plans.
+> Drop the messages, screenshots and preferences. APORIA finds the plans that actually work for everyone.
+>
+> And when nothing works, it tells you **what needs to change.**
 
-## The experience
+## The problem
 
-Create a room such as **Dinner after Nerdearla**, share one link, and let everyone contribute in the format they already have:
+Organizing something with other people is a mess: one person sends their schedule over WhatsApp, another sends a screenshot, someone has a budget, someone else can't travel far, and you end up with fifty messages and nothing decided.
 
-- write “Saturday after 8, but not too far from Caballito”;
-- paste a WhatsApp conversation;
-- upload a calendar or Maps screenshot;
-- add a place link, availability grid, poll, preference, or veto.
+## What APORIA does
 
-APORIA extracts candidate constraints, shows what it thinks it found, and asks the contributor to confirm before anything enters the shared model. The room then presents plans in human terms:
+Drop in your information exactly the way you already have it. The AI reads it, everyone confirms it understood correctly, and APORIA finds the plans that genuinely work for the group.
 
-> **Plan A — Saturday 20:30**
-> Meets everyone’s confirmed availability, budget, travel, and dietary constraints.
+If nothing works, it doesn't just say "no options." **It shows you the smallest change that would make one possible.**
 
-When there is no perfect plan, APORIA should explain the smallest useful change that opens one: a later time, a wider travel radius, or a different budget.
+## Why this isn't just another chatbot
 
-## Why this is different
+A chatbot can *suggest* a plan. APORIA can *check* one.
 
-| Typical planning flow | APORIA |
-| --- | --- |
-| Everyone translates their situation into the same form | Everyone contributes text, images, links, grids, or votes |
-| Suggestions are difficult to audit | Extracted facts require human confirmation |
-| A recommendation hides the trade-offs | Each plan explains which constraints it satisfies or relaxes |
-| “No solution” ends the conversation | Minimal relaxations show what could unblock the group |
+Five friends want to go out. You hand APORIA their messages and screenshots:
 
-APORIA is not a form, a scheduling poll, or a chatbot that invents consensus. It is a shared decision room: people provide evidence about what they know, a deterministic engine evaluates the confirmed model, and AI helps with the parts where interpretation or discovery is useful.
+- "Ana can only go after 8."
+- "Juan doesn't eat gluten."
+- "Sofi doesn't want to spend more than $25,000."
+- "Pedro needs it close to the subway."
 
-## How it works
+APORIA works through the options:
 
-```text
-human input
-  → multimodal extraction
-  → proposed structured constraints
-  → human confirmation
-  → canonical shared model
-  → deterministic constraint evaluation
-  → candidate search and proposal
-  → ranked plans with generated explanations
-```
+- **Plan A** — doesn't work, it's over Sofi's budget.
+- **Plan B** — works for all five.
+- **Plan C** — would work if Pedro accepts 15 extra minutes of travel.
 
-AI may extract meaning from a screenshot or propose a restaurant candidate. It must not silently decide that a person is available, that a place satisfies a restriction, or that a plan is valid. The decision path uses typed structured data and exact arithmetic; presentation may use natural language, but the explanation is derived from evaluated facts rather than narrated into existence.
+The AI handles understanding the human mess. What it can't do is invent that something works: people confirm what it understood first, and only then does the plan get checked.
 
-## Destination-driven construction
+## Not just dinner
 
-APORIA is being built toward a general-purpose collective decision engine. The levels are coherent product states, not disposable prototypes:
-
-1. **Shared planning room** — text input, confirmed extraction, deterministic overlap, candidate plans, and explanations.
-2. **Heterogeneous evidence** — screenshots, links, and other real-world inputs using the same extraction boundary.
-3. **Negotiation by minimal relaxation** — show the smallest changes that make an impossible room solvable.
-4. **Structured participation** — availability grids and polls become first-class inputs without changing the canonical model.
-5. **Verify** — canonical snapshots, provenance, and SHA-256 verification for people who want to inspect the decision record.
-
-Each level preserves the same authority boundary, confirmation requirement, deterministic decision path, and auditable representation.
+The same idea works for anything a group needs to figure out together: when to meet, where to eat, what to book, what to buy, what to do this weekend, how to plan a trip.
 
 ## Project status
 
-**Design status:** destination and construction levels defined. Implementation and runtime evidence are not yet present in this repository.
-
-The target is a full-stack app deployed on Webflow Cloud for the Webflow hackathon. The intended first implementation path is a shareable room with realtime collaboration, but no external service or integration is claimed here until it is configured and verified.
-
-The client stack is fixed as **Vite + React + TypeScript**. The browser provides the room experience; server-side boundaries retain Gemini secrets, persistence, authorization, and deterministic evaluation.
+Building toward a full-stack app on Webflow Cloud for the Webflow Cloud hackathon. See the [Technical README](TECHNICAL-README.md) for architecture, stack, and implementation status.
 
 ## Design documents
 
