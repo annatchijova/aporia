@@ -16,12 +16,14 @@ export class GeminiProvider implements IntelligenceProvider {
 
   private async generate(contents: unknown[], schema: Record<string, unknown>): Promise<{ data: unknown; requestId?: string }> {
     if (!this.env.GEMINI_API_KEY) throw new ProviderError('unavailable', 'Gemini is not configured server-side');
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12_000);
-    try {
+    const apiKey = this.env.GEMINI_API_KEY;
+    const generateOnce = async (): Promise<{ data: unknown; requestId?: string }> => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12_000);
+      try {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.model)}:generateContent`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-goog-api-key': this.env.GEMINI_API_KEY },
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({ contents, generationConfig: { responseMimeType: 'application/json', responseSchema: schema, temperature: 0 } }),
         signal: controller.signal,
       });
@@ -49,11 +51,20 @@ export class GeminiProvider implements IntelligenceProvider {
       const text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!text) throw new ProviderError('invalid_output', 'Gemini returned no structured content');
       try { return { data: JSON.parse(text), requestId: payload.responseId }; } catch { throw new ProviderError('invalid_output', 'Gemini returned invalid JSON'); }
+      } catch (error) {
+        if (error instanceof ProviderError) throw error;
+        if (error instanceof DOMException && error.name === 'AbortError') throw new ProviderError('timeout', 'Gemini request timed out', true);
+        throw new ProviderError('unavailable', 'Gemini request could not be completed');
+      } finally { clearTimeout(timeout); }
+    };
+
+    try {
+      return await generateOnce();
     } catch (error) {
-      if (error instanceof ProviderError) throw error;
-      if (error instanceof DOMException && error.name === 'AbortError') throw new ProviderError('timeout', 'Gemini request timed out', true);
-      throw new ProviderError('unavailable', 'Gemini request could not be completed');
-    } finally { clearTimeout(timeout); }
+      if (!(error instanceof ProviderError) || !error.retryable) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      return generateOnce();
+    }
   }
 
   async extract(request: ExtractionRequest) {
