@@ -66,6 +66,13 @@ Each level preserves the same authority boundary, confirmation requirement, dete
 
 The target is a full-stack app deployed on Webflow Cloud for the Webflow hackathon. The intended first implementation path is a shareable room with realtime collaboration, but no external service or integration is claimed here until it is configured and verified.
 
+The client stack is fixed as **Vite + React + TypeScript**. The browser provides the room experience; server-side boundaries retain Gemini secrets, persistence, authorization, and deterministic evaluation.
+
+## Design documents
+
+- [Architecture decision](docs/APORIA-ARCHITECTURE-DECISION.md)
+- [Red-team architecture review](docs/red-team/APORIA-RED-TEAM-ARCHITECTURE.md)
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).

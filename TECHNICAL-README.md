@@ -19,6 +19,12 @@ untrusted human/AI input
 
 An LLM may interpret heterogeneous input or propose candidates. It is never the authority for availability, constraint satisfaction, ranking validity, or consensus.
 
+## Client stack
+
+The planned client is **Vite + React + TypeScript**. Vite builds the browser bundle; React renders room state and interaction; TypeScript expresses client-side command/snapshot contracts. None of these is a trust boundary: the browser is user-controlled and all commands are revalidated server-side.
+
+Gemini credentials, durable persistence, authorization, canonical state transitions, provenance, and deterministic evaluation remain server-side. A `VITE_*` variable must never contain a provider secret.
+
 ## Destination
 
 APORIA is intended to become a general collective decision engine. A room has a shareable identity, a sequence of contributed evidence, a confirmed canonical model, evaluated candidate plans, and a verifiable snapshot.
