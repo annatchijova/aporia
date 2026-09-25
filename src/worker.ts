@@ -1,6 +1,7 @@
 import { applyEvent } from './core/reducer';
 import { assertBoundedText, assertCents, assertMinute, assertWeekday, emptySnapshot, type Candidate, type DecisionSnapshot, type RoomEvent } from './core/model';
 import { decodeImageBase64 } from './core/artifact';
+import { calculateRelaxations } from './core/relaxation';
 import { canonicalSnapshot } from './core/canonical';
 import { GeminiProvider } from './intelligence/gemini';
 import { ProviderError, type CandidateDraft } from './intelligence/contracts';
@@ -238,6 +239,18 @@ async function acceptCandidateProposal(env: Env, request: Request, roomId: strin
   return json({ snapshot: next });
 }
 
+async function calculateRoomRelaxations(env: Env, request: Request, roomId: string): Promise<Response> {
+  const actor = await session(request, env, roomId);
+  if (!actor) return json({ error: 'valid room session required' }, 401);
+  const input = await body(request);
+  const expectedRevision = Number(input.expectedRevision);
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) return json({ error: 'expectedRevision is required' }, 400);
+  const snapshot = await readRoom(env, roomId);
+  if (!snapshot) return json({ error: 'room not found' }, 404);
+  if (snapshot.revision !== expectedRevision) return json({ error: 'stale room revision', currentRevision: snapshot.revision }, 409);
+  return json({ result: calculateRelaxations(snapshot) });
+}
+
 async function handleApi(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const path = routePath(url).replace(/\/$/, '');
@@ -259,6 +272,8 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
   if (request.method === 'POST' && discoveryMatch) return discoverCandidates(env, request, discoveryMatch[1]);
   const acceptDiscoveryMatch = path.match(/^\/api\/rooms\/([^/]+)\/candidate-discovery\/([^/]+)\/accept$/);
   if (request.method === 'POST' && acceptDiscoveryMatch) return acceptCandidateProposal(env, request, acceptDiscoveryMatch[1], acceptDiscoveryMatch[2]);
+  const relaxationMatch = path.match(/^\/api\/rooms\/([^/]+)\/relaxations$/);
+  if (request.method === 'POST' && relaxationMatch) return calculateRoomRelaxations(env, request, relaxationMatch[1]);
   return json({ error: 'not found' }, 404);
 }
 

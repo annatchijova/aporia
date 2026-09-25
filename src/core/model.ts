@@ -107,6 +107,28 @@ export interface Evaluation {
   evaluatorVersion: string;
 }
 
+export type RelaxationChange =
+  | { kind: 'budget_max'; fromCents: number; toCents: number; currency: string }
+  | { kind: 'availability'; fromWeekday: number; fromStartMinute: number; fromEndMinute: number; toWeekday: number; toStartMinute: number; toEndMinute: number };
+
+export interface RelaxationOption {
+  id: string;
+  policyVersion: string;
+  candidateId: string;
+  candidateTitle: string;
+  constraintKind: 'availability' | 'budget_max';
+  participantId: string;
+  factId: string;
+  change: RelaxationChange;
+  cost: { unit: 'cents' | 'minutes'; amount: number };
+}
+
+export interface RelaxationResult {
+  snapshotRevision: number;
+  policyVersion: string;
+  options: RelaxationOption[];
+}
+
 export interface DecisionSnapshot {
   schemaVersion: typeof SCHEMA_VERSION;
   roomId: string;
