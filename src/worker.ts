@@ -1,5 +1,6 @@
 import { applyEvent } from './core/reducer';
 import { assertBoundedText, assertCents, assertMinute, assertWeekday, emptySnapshot, type Candidate, type DecisionSnapshot, type RoomEvent } from './core/model';
+import { decodeImageBase64 } from './core/artifact';
 import { canonicalSnapshot } from './core/canonical';
 import { GeminiProvider } from './intelligence/gemini';
 import { ProviderError } from './intelligence/contracts';
@@ -19,8 +20,11 @@ function json(data: unknown, status = 200): Response {
 
 async function body(request: Request): Promise<Record<string, unknown>> {
   const length = Number(request.headers.get('content-length') ?? 0);
-  if (length > 256_000) throw new Error('request body too large');
-  const parsed: unknown = await request.json();
+  if (length > 2_100_000) throw new Error('request body too large');
+  const raw = await request.arrayBuffer();
+  if (raw.byteLength > 2_100_000) throw new Error('request body too large');
+  let parsed: unknown;
+  try { parsed = JSON.parse(new TextDecoder().decode(raw)); } catch { throw new Error('request body must be valid JSON'); }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('request body must be an object');
   return parsed as Record<string, unknown>;
 }
@@ -101,10 +105,20 @@ async function createProposal(env: Env, request: Request, roomId: string): Promi
   const actor = await session(request, env, roomId);
   if (!actor) return json({ error: 'valid room session required' }, 401);
   const input = await body(request);
-  const content = assertBoundedText(String(input.content ?? ''), 'content', 12_000);
+  if (input.kind !== undefined && input.kind !== 'text' && input.kind !== 'image') return json({ error: 'unsupported artifact kind' }, 400);
+  const kind: 'text' | 'image' = input.kind === 'image' ? 'image' : 'text';
+  let content: string;
+  let artifactExtras: { mimeType?: 'image/png' | 'image/jpeg' | 'image/webp'; byteLength?: number } = {};
+  if (kind === 'image') {
+    const image = decodeImageBase64(input.content, input.mimeType);
+    content = image.data;
+    artifactExtras = { mimeType: image.mimeType, byteLength: image.byteLength };
+  } else {
+    content = assertBoundedText(String(input.content ?? ''), 'content', 12_000);
+  }
   const snapshot = await readRoom(env, roomId);
   if (!snapshot) return json({ error: 'room not found' }, 404);
-  const artifact = { id: crypto.randomUUID(), kind: 'text' as const, content, contentHash: await sha256(content), createdAt: now(), participantId: actor.participantId };
+  const artifact = { id: crypto.randomUUID(), kind, content, contentHash: await sha256(content), createdAt: now(), participantId: actor.participantId, ...artifactExtras };
   const names = snapshot.participants.map((item) => item.displayName);
   try {
     const proposal = await new GeminiProvider(env).extract({ artifact, participantNames: names });

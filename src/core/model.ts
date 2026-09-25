@@ -10,11 +10,13 @@ export interface Participant {
 
 export interface InputArtifact {
   id: string;
-  kind: 'text';
+  kind: 'text' | 'image';
   content: string;
   contentHash: string;
   createdAt: string;
   participantId: string;
+  mimeType?: 'image/png' | 'image/jpeg' | 'image/webp';
+  byteLength?: number;
 }
 
 export interface ClaimProposal {

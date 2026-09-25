@@ -58,4 +58,15 @@ describe('GeminiProvider failure boundary', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 429 })));
     await expect(new GeminiProvider({ GEMINI_API_KEY: 'test-key' }).extract({ artifact, participantNames: [] })).rejects.toBeInstanceOf(ProviderError);
   });
+
+  it('sends image artifacts as Gemini inline data and advertises image extraction', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ claims: [], warnings: [] }) }] } }] }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const imageArtifact = { ...artifact, id: 'image-1', kind: 'image' as const, content: 'iVBORw0KGgo=', mimeType: 'image/png' as const, byteLength: 8 };
+    const provider = new GeminiProvider({ GEMINI_API_KEY: 'test-key' });
+    await provider.extract({ artifact: imageArtifact, participantNames: ['Anna'] });
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body)) as { contents: Array<{ parts: Array<{ inlineData?: { mimeType: string; data: string } }> }> };
+    expect(body.contents[0].parts[1].inlineData).toEqual({ mimeType: 'image/png', data: 'iVBORw0KGgo=' });
+    expect(provider.capabilities().imageExtraction).toBe(true);
+  });
 });
