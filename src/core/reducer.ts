@@ -35,6 +35,12 @@ export function applyEvent(snapshot: DecisionSnapshot, event: RoomEvent): Decisi
       if (next.candidates.some((item) => item.id === candidate.id)) throw new Error('duplicate candidate');
       next.candidates.push(candidate);
     }
+  } else if (event.type === 'candidate.accepted') {
+    const candidates = event.payload as DecisionSnapshot['candidates'];
+    for (const candidate of candidates) {
+      if (next.candidates.some((item) => item.id === candidate.id)) throw new Error('duplicate candidate');
+      next.candidates.push(candidate);
+    }
   } else {
     throw new Error(`unsupported event type: ${event.type}`);
   }

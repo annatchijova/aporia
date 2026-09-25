@@ -3,7 +3,7 @@ import { assertBoundedText, assertCents, assertMinute, assertWeekday, emptySnaps
 import { decodeImageBase64 } from './core/artifact';
 import { canonicalSnapshot } from './core/canonical';
 import { GeminiProvider } from './intelligence/gemini';
-import { ProviderError } from './intelligence/contracts';
+import { ProviderError, type CandidateDraft } from './intelligence/contracts';
 
 interface Env {
   ASSETS: Fetcher;
@@ -56,6 +56,10 @@ async function commitEvent(env: Env, snapshot: DecisionSnapshot, event: RoomEven
   const result = await env.DB.batch([update, insert]);
   if ((result[0]?.meta?.changes ?? 0) !== 1) throw new Error('stale room revision');
   return next;
+}
+
+function idempotencyKey(input: Record<string, unknown>): string {
+  return assertBoundedText(String(input.idempotencyKey ?? ''), 'idempotencyKey', 128);
 }
 
 function routePath(url: URL): string { return url.pathname.replace(/^\/[^/]+(?=\/api\/)/, ''); }
@@ -178,16 +182,23 @@ async function addCandidate(env: Env, request: Request, roomId: string): Promise
 async function discoverCandidates(env: Env, request: Request, roomId: string): Promise<Response> {
   const actor = await session(request, env, roomId);
   if (!actor) return json({ error: 'valid room session required' }, 401);
+  const input = await body(request);
+  const expectedRevision = Number(input.expectedRevision);
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) return json({ error: 'expectedRevision is required' }, 400);
+  const key = idempotencyKey(input);
+  const existing = await env.DB.prepare('SELECT id, base_revision as baseRevision, drafts_json as drafts, provider_json as provider, warnings_json as warnings, status FROM candidate_proposals WHERE room_id = ? AND idempotency_key = ?').bind(roomId, key).first<{ id: string; baseRevision: number; drafts: string; provider: string; warnings: string; status: string }>();
+  if (existing) return json({ proposal: { id: existing.id, baseRevision: existing.baseRevision, candidates: JSON.parse(existing.drafts), provider: JSON.parse(existing.provider), warnings: JSON.parse(existing.warnings), status: existing.status }, replayed: true });
   const snapshot = await readRoom(env, roomId);
   if (!snapshot) return json({ error: 'room not found' }, 404);
+  if (snapshot.revision !== expectedRevision) return json({ error: 'stale room revision', currentRevision: snapshot.revision }, 409);
   const knownConstraints = snapshot.constraints.map((constraint) => JSON.stringify(constraint));
   try {
     const proposal = await new GeminiProvider(env).propose({ prompt: `Planning goal: ${snapshot.title}`, knownConstraints });
-    const candidates: Candidate[] = proposal.candidates.map((draft) => ({ ...draft, id: crypto.randomUUID(), source: { kind: 'gemini', ref: proposal.provider.requestId ?? proposal.provider.model } }));
-    if (candidates.length === 0) return json({ candidates, warnings: proposal.warnings, provider: proposal.provider, snapshot });
-    const event: RoomEvent = { id: crypto.randomUUID(), roomId, revision: snapshot.revision + 1, actorId: actor.participantId, type: 'candidate.discovered', payload: candidates, createdAt: now() };
-    const next = await commitEvent(env, snapshot, event);
-    return json({ candidates, warnings: proposal.warnings, provider: proposal.provider, snapshot: next });
+    const proposalId = crypto.randomUUID();
+    await env.DB.prepare('INSERT OR IGNORE INTO candidate_proposals (id, room_id, base_revision, idempotency_key, drafts_json, provider_json, warnings_json, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(proposalId, roomId, snapshot.revision, key, JSON.stringify(proposal.candidates), JSON.stringify(proposal.provider), JSON.stringify(proposal.warnings), 'pending', now()).run();
+    const stored = await env.DB.prepare('SELECT id, base_revision as baseRevision, drafts_json as drafts, provider_json as provider, warnings_json as warnings, status FROM candidate_proposals WHERE room_id = ? AND idempotency_key = ?').bind(roomId, key).first<{ id: string; baseRevision: number; drafts: string; provider: string; warnings: string; status: string }>();
+    if (!stored) return json({ error: 'candidate proposal could not be stored' }, 503);
+    return json({ proposal: { id: stored.id, baseRevision: stored.baseRevision, candidates: JSON.parse(stored.drafts), provider: JSON.parse(stored.provider), warnings: JSON.parse(stored.warnings), status: stored.status } });
   } catch (error) {
     if (error instanceof ProviderError) {
       const status = error.code === 'rate_limited' ? 429 : error.code === 'timeout' ? 504 : error.code === 'unavailable' && error.retryable ? 503 : 502;
@@ -195,6 +206,36 @@ async function discoverCandidates(env: Env, request: Request, roomId: string): P
     }
     return json({ error: 'Candidate discovery failed. Try again.', code: 'provider_failure', retryable: false }, 502);
   }
+}
+
+async function acceptCandidateProposal(env: Env, request: Request, roomId: string, proposalId: string): Promise<Response> {
+  const actor = await session(request, env, roomId);
+  if (!actor) return json({ error: 'valid room session required' }, 401);
+  const input = await body(request);
+  const expectedRevision = Number(input.expectedRevision);
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) return json({ error: 'expectedRevision is required' }, 400);
+  const key = idempotencyKey(input);
+  const proposal = await env.DB.prepare('SELECT id, base_revision as baseRevision, drafts_json as drafts, provider_json as provider, warnings_json as warnings, status FROM candidate_proposals WHERE id = ? AND room_id = ?').bind(proposalId, roomId).first<{ id: string; baseRevision: number; drafts: string; provider: string; warnings: string; status: string }>();
+  if (!proposal) return json({ error: 'candidate proposal not found' }, 404);
+  const snapshot = await readRoom(env, roomId);
+  if (!snapshot) return json({ error: 'room not found' }, 404);
+  if (proposal.status === 'accepted') return json({ snapshot, replayed: true });
+  if (snapshot.revision !== expectedRevision || proposal.baseRevision !== expectedRevision) return json({ error: 'stale room revision', currentRevision: snapshot.revision }, 409);
+  const drafts = JSON.parse(proposal.drafts) as CandidateDraft[];
+  const provider = JSON.parse(proposal.provider) as { name: string; model: string; requestId?: string };
+  const candidates: Candidate[] = drafts.map((draft) => ({ ...draft, id: crypto.randomUUID(), source: { kind: 'gemini', ref: provider.requestId ?? provider.model } }));
+  if (candidates.length === 0) {
+    await env.DB.prepare('UPDATE candidate_proposals SET status = ?, accepted_event_id = ? WHERE id = ? AND status = ?').bind('accepted', key, proposalId, 'pending').run();
+    return json({ snapshot });
+  }
+  const event: RoomEvent = { id: crypto.randomUUID(), roomId, revision: snapshot.revision + 1, actorId: actor.participantId, type: 'candidate.accepted', payload: candidates, createdAt: now() };
+  const next = applyEvent(snapshot, event);
+  const update = env.DB.prepare('UPDATE rooms SET revision = ?, snapshot_json = ? WHERE id = ? AND revision = ?').bind(next.revision, JSON.stringify(next), roomId, snapshot.revision);
+  const insert = env.DB.prepare('INSERT INTO events (id, room_id, revision, actor_id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(event.id, event.roomId, event.revision, event.actorId, event.type, JSON.stringify(event.payload), event.createdAt);
+  const proposalUpdate = env.DB.prepare('UPDATE candidate_proposals SET status = ?, accepted_event_id = ? WHERE id = ? AND status = ?').bind('accepted', event.id, proposalId, 'pending');
+  const result = await env.DB.batch([update, insert, proposalUpdate]);
+  if ((result[0]?.meta?.changes ?? 0) !== 1 || (result[2]?.meta?.changes ?? 0) !== 1) return json({ error: 'concurrent change; retry from current room state' }, 409);
+  return json({ snapshot: next });
 }
 
 async function handleApi(request: Request, env: Env): Promise<Response> {
@@ -216,6 +257,8 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
   if (request.method === 'POST' && candidateMatch) return addCandidate(env, request, candidateMatch[1]);
   const discoveryMatch = path.match(/^\/api\/rooms\/([^/]+)\/candidate-discovery$/);
   if (request.method === 'POST' && discoveryMatch) return discoverCandidates(env, request, discoveryMatch[1]);
+  const acceptDiscoveryMatch = path.match(/^\/api\/rooms\/([^/]+)\/candidate-discovery\/([^/]+)\/accept$/);
+  if (request.method === 'POST' && acceptDiscoveryMatch) return acceptCandidateProposal(env, request, acceptDiscoveryMatch[1], acceptDiscoveryMatch[2]);
   return json({ error: 'not found' }, 404);
 }
 

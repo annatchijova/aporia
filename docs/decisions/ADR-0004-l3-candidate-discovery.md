@@ -7,15 +7,15 @@
 
 `GeminiProvider.propose()` devuelve como máximo ocho `CandidateDraft` tipados. El boundary valida estructura, rangos, intervalos, textos y valores monetarios antes de aceptar los drafts.
 
-El comando explícito `POST /api/rooms/:id/candidate-discovery` usa el snapshot confirmado como contexto. El Worker asigna IDs, marca provenance `source.kind = gemini`, registra un evento `candidate.discovered` append-only y ejecuta el evaluator mediante el reducer. Gemini no recibe autoridad para afirmar que una opción cumple.
+El comando explícito `POST /api/rooms/:id/candidate-discovery` usa el snapshot confirmado como contexto y crea un `CandidateProposal` pendiente con idempotency key. El usuario debe aceptar explícitamente esa propuesta mediante `/accept`; recién entonces el Worker asigna IDs, marca provenance `source.kind = gemini`, registra un evento `candidate.accepted` append-only y ejecuta el evaluator mediante el reducer. Gemini no recibe autoridad para afirmar que una opción cumple.
 
 ## Invariantes
 
-- Un draft de Gemini nunca es un Fact, Constraint o Preference.
+- Un draft de Gemini nunca es un Fact, Constraint, Preference ni Candidate canónico antes de la aceptación humana.
 - Sólo el Worker crea el provenance `gemini`; el cliente no puede etiquetar manualmente un candidato como generado por Gemini.
 - El evaluator decide factibilidad, unknowns, violaciones, scoring y ranking.
 - Mismos snapshot, candidatos y versión producen la misma evaluación.
-- El evento exige sesión válida y revisión monotónica; la mutación es una transacción de snapshot + evento.
+- El descubrimiento exige sesión, `expectedRevision` e idempotency key; la aceptación exige además la revisión base de la propuesta. La mutación es una transacción de snapshot + evento + cambio de estado de propuesta.
 - Candidato inválido, respuesta malformada o provider error no muta la room.
 
 ## Alternativas rechazadas
