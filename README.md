@@ -28,7 +28,7 @@ Here's the thing nobody says out loud about AI tools: half the time you don't kn
 
 APORIA doesn't get to just believe itself either. It reads your mess, but before anything counts, *you* confirm it got you right. And once something's confirmed, whether a plan actually works is checked, not guessed — the AI doesn't get to invent that everyone's free on Saturday because that would make a nicer answer. If it doesn't check out, it doesn't make the list.
 
-So when APORIA says "this plan works for all five of you," that's not a nice-sounding suggestion. It's a fact you can hand to your friends without double-checking it.
+So when APORIA says "this plan works for all five of you," that is a deterministic result against the information the group confirmed — not a suggestion Gemini invented. APORIA does not silently turn unknown external facts into a guarantee.
 
 ## It's not just about dinner
 
@@ -41,6 +41,8 @@ We built this for the Webflow Cloud hackathon, and we'd genuinely love to win it
 ## Try it right now
 
 **[aporia-bbb3f7.webflow.io](https://aporia-bbb3f7.webflow.io/)** — no account, no install. Start a room, drop in something messy, and watch it turn into an actual answer.
+
+The current coherent product state includes shared rooms, text and screenshot evidence, human-confirmed extraction, Gemini candidate proposals with explicit acceptance, deterministic evaluation, and bounded “what would need to change?” suggestions. Links, polls, structured participation, and the Verify surface remain part of the destination architecture.
 
 ## Design documents
 
