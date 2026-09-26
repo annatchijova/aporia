@@ -1,6 +1,8 @@
 # APORIA
 
-<img src="docs/logoaporia.png" alt="APORIA logo" width="200">
+<p align="center">
+  <img src="docs/logoaporia.png" alt="APORIA logo" width="400">
+</p>
 
 **Stop arguing. Start planning.**
 
