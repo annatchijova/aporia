@@ -58,9 +58,9 @@ La misma sala puede servir para decidir cuándo juntarse, dónde comer, qué alo
 
 El problema es siempre parecido: varias personas tienen información válida, pero repartida en lugares y formatos incompatibles. APORIA la convierte en un plan que el grupo puede mirar, discutir y acordar.
 
-## Construido para durar más que un hackathon
+## Construido para durar más que un concurso
 
-APORIA nació para el Webflow Cloud hackathon, pero no está pensado como una demo descartable. Está publicado bajo Apache 2.0 para que otras personas puedan usarlo, forkearlo y mejorarlo.
+APORIA nació para el concurso de Webflow Cloud, pero no está pensado como una demo descartable. Está publicado bajo Apache 2.0 para que otras personas puedan usarlo, forkearlo y mejorarlo.
 
 Hoy el producto implementa cuatro niveles coherentes:
 

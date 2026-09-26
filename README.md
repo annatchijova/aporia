@@ -38,9 +38,9 @@ So when APORIA says "this plan works for all five of you," that is a determinist
 
 Once you build something that can turn a pile of human noise into "here's what's actually true, here's what fits," it stops being a dinner-planning app. The same shape solves: when the five of you can actually meet, what apartment fits everyone's budget and commute, what gift everyone can afford to chip in on, where the trip actually works for the whole group's dates. Planning with other people is the same fight everywhere. We built the thing that ends the fight, not another app for one slice of it.
 
-## This isn't a hackathon throwaway
+## This isn't a competition throwaway
 
-We built this for the Webflow Cloud hackathon, and we'd genuinely love to win it — but this isn't going to get abandoned the day after judging. It's Apache 2.0 licensed, which nobody required us to do; we did it because we want people to build on it, fork it, and hold us to it. We're going to keep shipping levels toward the real destination: more ways to drop in evidence, smarter negotiation when the group is stuck, and a fully auditable record of how every plan was decided. What you're looking at is the first honest chapter, not a demo we'll quietly delete.
+We built this for the Webflow Cloud competition, and we'd genuinely love to win it — but this isn't going to get abandoned the day after judging. It's Apache 2.0 licensed, which nobody required us to do; we did it because we want people to build on it, fork it, and hold us to it. We're going to keep shipping levels toward the real destination: more ways to drop in evidence, smarter negotiation when the group is stuck, and a fully auditable record of how every plan was decided. What you're looking at is the first honest chapter, not a demo we'll quietly delete.
 
 ## Try it right now
 
