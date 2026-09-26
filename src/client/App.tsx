@@ -44,8 +44,8 @@ export function App() {
   useEffect(() => { if (!roomId) { setStatus("idle"); return; } let active = true; setStatus("loading"); setSnapshot(null); request<{snapshot:DecisionSnapshot}>("/api/rooms/" + roomId).then(data => { if (active) { setSnapshot(data.snapshot); setStatus("ready"); } }).catch(() => { if (active) { setError(t(language, "loadFailed")); setStatus("error"); } }); return () => { active = false; }; }, [roomId, language]);
   const preferences = <Preferences language={language} setLanguage={setLanguage} theme={theme} setTheme={setTheme} />;
   const navigate = (nextRoomId:string, nextSession:Session) => { history.pushState({}, "", base + "?room=" + encodeURIComponent(nextRoomId)); localStorage.setItem("aporia:" + nextRoomId, JSON.stringify(nextSession)); setRoomId(nextRoomId); setSession(nextSession); setError(null); };
-  if (roomId && status === "loading") return <Loading language={language} preferences={preferences} />;
   if (roomId && status === "error" && !snapshot) return <LoadError language={language} preferences={preferences} retry={() => setRoomId(roomId)} />;
+  if (roomId && (status === "loading" || !snapshot)) return <Loading language={language} preferences={preferences} />;
   if (!roomId) return <Landing language={language} preferences={preferences} created={navigate} />;
   if (!session) return <Join language={language} preferences={preferences} roomId={roomId} joined={next => { localStorage.setItem("aporia:" + roomId, JSON.stringify(next)); setSession(next); }} error={error} />;
   return <Room language={language} preferences={preferences} snapshot={snapshot!} session={session} proposal={proposal} candidateProposal={candidateProposal} setCandidateProposal={setCandidateProposal} setProposal={setProposal} setSnapshot={setSnapshot} setError={setError} error={error} />;
