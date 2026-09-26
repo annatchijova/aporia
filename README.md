@@ -1,5 +1,7 @@
 # APORIA
 
+<img src="docs/logoaporia.png" alt="APORIA logo" width="200">
+
 **Stop arguing. Start planning.**
 
 [English](README.md) · [Español](README_ES.md) · [Technical README](TECHNICAL-README.md) · [**Try it live →**](https://aporia-bbb3f7.webflow.io/)
