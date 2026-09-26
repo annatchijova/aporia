@@ -4,7 +4,7 @@
 
 ## Status and epistemic boundary
 
-**Status:** L1 is implemented in this repository. Local typecheck, tests, Vite production build, Wrangler/D1 smoke tests, and stale-revision rejection have been observed. Remote Webflow deployment and live Gemini extraction remain unverified in this workspace; L2–L5 are destination architecture, not claimed implementation.
+**Status:** L4 is implemented in this repository. Local typecheck, tests, Vite production build, bounded screenshot extraction, Gemini candidate discovery with human acceptance, and deterministic relaxation tests have been observed. Remote Webflow deployment, live D1 migration, and live Gemini extraction remain unverified in this workspace; do not describe them as verified until a public smoke test passes.
 
 The central boundary is:
 
@@ -82,15 +82,19 @@ The system should fail closed on malformed input, ambiguous confirmation, stale 
 
 Adds screenshots, pasted conversations, calendar captures, Maps links, and candidate-source records. OCR/vision/LLM output remains a bounded proposal with uncertainty and source coordinates where possible.
 
-### Level 3 — Minimal Relaxation
+### Level 3 — Candidate Discovery
+
+Adds bounded Gemini candidate drafts, explicit human acceptance, provider provenance, typed normalization, and deterministic evaluation. Candidate discovery never creates Facts or Constraints.
+
+### Level 4 — Minimal Relaxation
 
 When no plan satisfies all hard constraints, the evaluator computes bounded relaxation candidates. Each relaxation identifies the exact constraint, old value, new value, cost/order, affected participants, and resulting plans. “Minimal” is meaningful only relative to a documented cost function and tie-break policy.
 
-### Level 4 — Structured Participation
+### Level 5 — Structured Participation
 
 Availability grids and polls become direct typed inputs. They must compile into the same canonical model and preserve authorship, timestamps, revision, and provenance; they do not create a second decision engine.
 
-### Level 5 — Verify
+### Level 6 — Verify
 
 The room can expose a canonical snapshot, schema/canonicalization version, source references, evaluator version, and SHA-256 digest. Verification must be possible independently of the UI and must state exactly what the digest covers and what it does not prove.
 
