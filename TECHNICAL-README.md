@@ -21,7 +21,7 @@ An LLM may interpret heterogeneous input or propose candidates. It is never the 
 
 ## Client stack
 
-The planned client is **Vite + React + TypeScript**. Vite builds the browser bundle; React renders room state and interaction; TypeScript expresses client-side command/snapshot contracts. None of these is a trust boundary: the browser is user-controlled and all commands are revalidated server-side.
+The client is built with **Vite + React + TypeScript**. Vite builds the browser bundle; React renders room state and interaction; TypeScript expresses client-side command/snapshot contracts. None of these is a trust boundary: the browser is user-controlled and all commands are revalidated server-side.
 
 Gemini credentials, durable persistence, authorization, canonical state transitions, provenance, and deterministic evaluation remain server-side. A `VITE_*` variable must never contain a provider secret.
 

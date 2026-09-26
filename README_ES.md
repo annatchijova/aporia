@@ -60,7 +60,7 @@ El problema es siempre parecido: varias personas tienen información válida, pe
 
 ## Construido para durar más que un concurso
 
-APORIA nació para el concurso de Webflow Cloud, pero no está pensado como una demo descartable. Está publicado bajo Apache 2.0 para que otras personas puedan usarlo, forkearlo y mejorarlo.
+APORIA nació para el Webflow Cloud App Challenge, pero no está pensado como una demo descartable. Está publicado bajo Apache 2.0 para que otras personas puedan usarlo, forkearlo y mejorarlo.
 
 Hoy el producto implementa cuatro niveles coherentes:
 
