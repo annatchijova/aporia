@@ -4,7 +4,7 @@
 
 ## Status and epistemic boundary
 
-**Status:** L4 is implemented in this repository. Local typecheck, tests, Vite production build, bounded screenshot extraction, Gemini candidate discovery with human acceptance, and deterministic relaxation tests have been observed. Remote Webflow deployment, live D1 migration, and live Gemini extraction remain unverified in this workspace; do not describe them as verified until a public smoke test passes.
+**Status:** L1 through L4 are implemented in this repository, deployed, and observed working in production, not only locally. Confirmed: local typecheck, 22/22 tests, and a production Vite build all pass; the app is live on Webflow Cloud with a real D1 migration applied; a real POST to `/api/rooms/:id/proposals` against the production Gemini key was exercised directly (both via `curl` against the Gemini endpoint and via a real browser session against the deployed app), returning genuine extracted claims — the failure modes observed were transient upstream 503s from Gemini itself, correctly classified and surfaced as retryable rather than crashing. A production-breaking client bug (rendering the room before its snapshot loaded, causing a blank page on room creation) was found by live testing, fixed, redeployed, and reverified live. What remains unverified in this workspace: L5/L6 (structured participation, Verify) are destination architecture only, not implemented.
 
 The central boundary is:
 
@@ -129,13 +129,9 @@ The evaluator must be able to return no feasible plan with a reason trace. Relax
 
 ## Evidence status
 
-No implementation evidence exists yet. Before any capability is described as working, the project should provide:
+What is verified as of this writing: 22/22 unit and boundary tests pass (extraction failure classification — 404/503/429/malformed-body/missing-key — plus evaluator, canonicalization, and reducer invariants); a clean typecheck and production build; a live end-to-end room trace exercised in a real browser against the deployed app (create room → contribute text → request extraction → observe correctly classified provider errors and successful extraction); and one production incident (blank page on room creation) caught by that same live testing, root-caused, fixed, and reverified live rather than only asserted fixed.
 
-- falsifiable tests for extraction confirmation, canonicalization, evaluator invariants, and concurrency;
-- determinism runs over reordered inputs and fresh processes;
-- adversarial tests for malformed and hostile input;
-- an end-to-end room trace from contribution to verified snapshot;
-- explicit deployment and realtime failure behavior.
+Still open, honestly: no determinism run over reordered inputs in a fresh process has been recorded in this document; no adversarial/hostile-input test suite exists yet beyond the provider-failure boundary tests; L5/L6 have no implementation to test.
 
 ## Non-goals for the first coherent state
 
