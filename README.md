@@ -2,53 +2,51 @@
 
 **Stop arguing. Start planning.**
 
-[English](README.md) · [Español](README_ES.md) · [Technical README](TECHNICAL-README.md)
+[English](README.md) · [Español](README_ES.md) · [Technical README](TECHNICAL-README.md) · [**Try it live →**](https://aporia-bbb3f7.webflow.io/)
 
 > Drop the messages, screenshots and preferences. APORIA finds the plans that actually work for everyone.
 >
 > And when nothing works, it tells you **what needs to change.**
 
-## The problem
+## You know this exact feeling
 
-Organizing something with other people is a mess: one person sends their schedule over WhatsApp, another sends a screenshot, someone has a budget, someone else can't travel far, and you end up with fifty messages and nothing decided.
+Someone starts a group chat. "When are we free this week?"
 
-## What APORIA does
+Twelve replies later, nobody has answered the actual question. One person pastes a screenshot of their calendar. Someone else says "whenever, I don't mind" — which is the least useful sentence in human history. Somebody quietly has a budget they haven't mentioned. Somebody else can't say out loud that they don't want to go somewhere far, so the plan just... stalls.
 
-Drop in your information exactly the way you already have it. The AI reads it, everyone confirms it understood correctly, and APORIA finds the plans that genuinely work for the group.
+Nobody is wrong. Coordinating people was never designed to work this way. We just got used to it hurting.
 
-If nothing works, it doesn't just say "no options." **It shows you the smallest change that would make one possible.**
+## So we built the thing we wished existed
 
-## Why this isn't just another chatbot
+You don't fill out a form. You don't make everyone agree on a format first. You just drop in what you already have — the exact mess you already have — and APORIA does the part that's actually hard: turning twelve different half-answers into something everyone can look at and say "yes, that one."
 
-A chatbot can *suggest* a plan. APORIA can *check* one.
+And when there's genuinely no plan that works for everyone, APORIA doesn't shrug. It tells you the one thing that would unlock it: *"this works for everyone if Pedro's okay with 15 extra minutes on the train."* That sentence is the whole product. It's the difference between a group chat that dies and a group chat that gets somewhere.
 
-Five friends want to go out. You hand APORIA their messages and screenshots:
+## Why you can actually trust what it tells you
 
-- "Ana can only go after 8."
-- "Juan doesn't eat gluten."
-- "Sofi doesn't want to spend more than $25,000."
-- "Pedro needs it close to the subway."
+Here's the thing nobody says out loud about AI tools: half the time you don't know if you should believe them.
 
-APORIA works through the options:
+APORIA doesn't get to just believe itself either. It reads your mess, but before anything counts, *you* confirm it got you right. And once something's confirmed, whether a plan actually works is checked, not guessed — the AI doesn't get to invent that everyone's free on Saturday because that would make a nicer answer. If it doesn't check out, it doesn't make the list.
 
-- **Plan A** — doesn't work, it's over Sofi's budget.
-- **Plan B** — works for all five.
-- **Plan C** — would work if Pedro accepts 15 extra minutes of travel.
+So when APORIA says "this plan works for all five of you," that's not a nice-sounding suggestion. It's a fact you can hand to your friends without double-checking it.
 
-The AI handles understanding the human mess. What it can't do is invent that something works: people confirm what it understood first, and only then does the plan get checked.
+## It's not just about dinner
 
-## Not just dinner
+Once you build something that can turn a pile of human noise into "here's what's actually true, here's what fits," it stops being a dinner-planning app. The same shape solves: when the five of you can actually meet, what apartment fits everyone's budget and commute, what gift everyone can afford to chip in on, where the trip actually works for the whole group's dates. Planning with other people is the same fight everywhere. We built the thing that ends the fight, not another app for one slice of it.
 
-The same idea works for anything a group needs to figure out together: when to meet, where to eat, what to book, what to buy, what to do this weekend, how to plan a trip.
+## This isn't a hackathon throwaway
 
-## Project status
+We built this for the Webflow Cloud hackathon, and we'd genuinely love to win it — but this isn't going to get abandoned the day after judging. It's Apache 2.0 licensed, which nobody required us to do; we did it because we want people to build on it, fork it, and hold us to it. We're going to keep shipping levels toward the real destination: more ways to drop in evidence, smarter negotiation when the group is stuck, and a fully auditable record of how every plan was decided. What you're looking at is the first honest chapter, not a demo we'll quietly delete.
 
-Building toward a full-stack app on Webflow Cloud for the Webflow Cloud hackathon. See the [Technical README](TECHNICAL-README.md) for architecture, stack, and implementation status.
+## Try it right now
+
+**[aporia-bbb3f7.webflow.io](https://aporia-bbb3f7.webflow.io/)** — no account, no install. Start a room, drop in something messy, and watch it turn into an actual answer.
 
 ## Design documents
 
 - [Architecture decision](docs/APORIA-ARCHITECTURE-DECISION.md)
 - [Red-team architecture review](docs/red-team/APORIA-RED-TEAM-ARCHITECTURE.md)
+- [Technical README](TECHNICAL-README.md) — stack, architecture, and implementation status, for anyone who wants to see how it actually works.
 
 ## License
 
