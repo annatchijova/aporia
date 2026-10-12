@@ -278,3 +278,7 @@ Current state (October 12, 2026): the PRD is approved and `devpost/spec.md` has 
 4. Do you confirm that APORIA's official instance owns a shared central backend for everyone, while people can host their frontend wherever they want? Someone cloning the repo could point to that backend if the public API and its limits allow it, or configure their own backend.
 
    **Your answer:** That's what I've been saying from the very beginning and a big clue to this is that the repository has an Apache 2 License.
+
+## Shared capacity and costs — pending
+
+To implement limits without blocking a normal gathering or leaving resource use open, what is the maximum number of participants per room, and what Gemini usage quota should each room have during the hackathon? The local probe reached 20 participants and 20 options, but that does not define the product maximum. We also need to know whether you prefer a strict cap on calls per room or a maximum usage/cost budget.

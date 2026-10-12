@@ -270,3 +270,7 @@ El PRD queda en estado `approved`. El flujo de habilidades todavía no había ge
 4. ¿Confirmás que la instancia oficial de APORIA sea la propietaria de un backend central compartido entre todos, mientras las personas puedan alojar su frontend donde quieran? Quien clone el repo podría apuntar a ese backend si la API pública y sus límites lo permiten, o configurar uno propio.
 
 **Es lo que dije desde momento 1 y una gran pista de esto es que el repositorio tiene Licencia Apache 2**
+
+## Capacidad y costos compartidos — pendiente
+
+Para implementar límites sin bloquear una reunión normal ni dejar abierto el consumo de recursos, ¿cuál es el máximo de participantes por sala y qué cuota de uso de Gemini debería tener cada sala durante el hackathon? La prueba local llegó a 20 participantes y 20 opciones, pero eso no define el máximo del producto. También hace falta saber si preferís un tope estricto de llamadas por sala o un presupuesto máximo de uso/costo.
