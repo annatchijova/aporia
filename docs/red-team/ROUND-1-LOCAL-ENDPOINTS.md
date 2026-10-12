@@ -4,8 +4,8 @@
 **Date:** 2026-10-12.
 **Revision:** source state and probe results are included in the implementation commit.
 **Threat model:** unauthenticated internet user or room participant can issue arbitrary requests and replay requests; cannot read Worker secrets or alter server code.
-**Scope exercised:** room creation and meeting-code lookup, observer message read, participant join, participant chat authorization, five-message limit, idempotency replay, claim attribution, and content-type handling.
-**Not exercised:** creator magic-link issuance/consumption, per-claim ownership checks against another uploader, duplicate review, successful Gemini-backed proposal paths, lifecycle transitions, concurrent requests, conflicting content-length/body streams, and actual browser behavior.
+**Scope exercised:** room creation and meeting-code lookup, observer message read, participant join, participant chat authorization, five-message limit, idempotency replay, claim attribution and uploader ownership, creator-link consumption, selected lifecycle/recovery/purge transitions, and request-body boundaries/content-type handling.
+**Not exercised:** magic-link issuance by the live email provider, expiry boundaries, duplicate review, successful Gemini-backed proposal paths, the real delete-and-email sequence, concurrent requests, conflicting content-length/body streams, and actual browser behavior.
 
 ## Evidence
 
@@ -89,14 +89,37 @@ Before the fix, `POST /api/rooms` with `Origin: https://attacker.example`, `Cont
 
 This narrows the browser-based simple-request path; it is not an abuse-control system. A direct client can still call the public endpoint with `application/json`, so rate limits and resource quotas remain required before arbitrary shared-backend traffic.
 
+## Additional endpoint checks — creator, recovery, and purge
+
+Synthetic local D1 rows exercised the remaining reachable identity and lifecycle paths without an email or Gemini request:
+
+| Probe | Observed result | Label |
+| --- | --- | --- |
+| Another room participant tries to approve the uploader's claim | HTTP 403; room revision remained unchanged | CONFIRMED BY INDUCTION |
+| Uploader approves that claim | HTTP 200; revision advanced once | CONFIRMED BY INDUCTION |
+| Consume a valid creator login link | HTTP 200; creator session returned | CONFIRMED BY INDUCTION |
+| Replay the consumed login link | HTTP 400 | CONFIRMED BY INDUCTION |
+| Creator session closes its room | HTTP 200 | CONFIRMED BY INDUCTION |
+| Fabricated creator session tries to reopen it | HTTP 401 | CONFIRMED BY INDUCTION |
+| Consume another owner login while the room is closed, then reopen | HTTP 200 for both operations | CONFIRMED BY INDUCTION |
+| Inspect reopened room | `reopened_read_only`, zero participants/facts/messages, aggregate registered count 2 | CONFIRMED BY INDUCTION |
+| Post chat using the old participant token after reopen | HTTP 401 because reopening removed the session | CONFIRMED BY INDUCTION; expected revocation |
+| Request delete while Resend is unconfigured | HTTP 503; room remained `reopened_read_only` | CONFIRMED BY INDUCTION |
+| Recovery link from a different account | HTTP 403; room remained in trash | CONFIRMED BY INDUCTION |
+| Owner's valid recovery link | HTTP 200; room became `recovered_read_only`, preserved the synthetic option and aggregate counts, and omitted its area | CONFIRMED BY INDUCTION |
+| Replay the recovery link | HTTP 400 | CONFIRMED BY INDUCTION |
+| Invoke scheduled purge on a synthetic trashed room with an expired recovery deadline | Local Explorer returned success; room lookup returned 404, D1 room and orphaned creator accounts were absent | CONFIRMED BY INDUCTION |
+
+The delete endpoint's successful branch was not exercised because email configuration is absent; the test only confirmed the room is not trashed if recovery-email setup fails. The purge test manually seeded an expired local room and invoked the Worker with its configured hourly cron expression. After all probes, the synthetic room was purged, including its test creator accounts and token rows. No production service was contacted.
+
 ## Round status
 
-The tested subset had no remaining confirmed finding. This is not a pass for the whole round because creator-link consumption, claim ownership checks against another uploader, duplicate review, malformed/oversized body boundaries, races, and lifecycle transitions remain untested.
+The tested subset had no remaining confirmed finding. This is not a pass for the whole round: only synthetic creator-link consumption and selected lifecycle transitions were exercised; live email issuance, successful delete-plus-email, expiry boundaries, duplicate review, races, content-length/body-stream discrepancies, and actual browser behavior remain untested.
 
 ## Next probes
 
-1. Exercise creator-link token single-use, expiry, room ownership and fresh-session behavior with seeded local D1 rows; do not send email.
-2. Exercise claim approval by the submitting participant versus another participant, duplicate review and stale revisions.
-3. Exercise body/content-length mismatch, unusual content types, and error serialization beyond the basic malformed JSON and size-cap probes.
-4. Exercise competing chat requests at the five-message boundary and competing state updates.
+1. Exercise magic-link expiry boundaries, creator-access request races/rate limits, and the successful delete/email sequence when a safe local email stub is available.
+2. Exercise duplicate claim review and stale revisions in addition to the uploader ownership check.
+3. Exercise body/content-length mismatch and error serialization beyond the basic malformed JSON and size-cap probes.
+4. Exercise competing chat requests at the five-message boundary and competing lifecycle/state updates.
 5. Record each confirmed defect separately, perform variant analysis across sibling paths, then replay the original induction after fixes.
