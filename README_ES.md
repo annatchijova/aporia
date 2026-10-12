@@ -18,7 +18,7 @@ Nadie está haciendo nada mal. Organizarse entre varias personas siempre fue una
 
 ## La sala común que faltaba
 
-Creás una sala como **Cena después de Nerdearla**, compartís el link y cada persona aporta lo que ya sabe, sin completar un formulario interminable:
+Creás una sala para **una cena con amigos**, compartís el link y cada persona aporta lo que ya sabe, sin completar un formulario interminable:
 
 - escribe “sábado después de las 20”;
 - pega un mensaje de WhatsApp;
@@ -58,11 +58,13 @@ La misma sala puede servir para decidir cuándo juntarse, dónde comer, qué alo
 
 El problema es siempre parecido: varias personas tienen información válida, pero repartida en lugares y formatos incompatibles. APORIA la convierte en un plan que el grupo puede mirar, discutir y acordar.
 
-## Construido para durar más que un concurso
+## Build With AI: Basics
 
-APORIA nació para el Webflow Cloud App Challenge, pero no está pensado como una demo descartable. Está publicado bajo Apache 2.0 para que otras personas puedan usarlo, forkearlo y mejorarlo.
+APORIA es nuestro proyecto para [Build With AI: Basics de Devpost](https://learn-ai-basics.devpost.com/). El repo empezó el 25 de septiembre de 2026, dentro del período de entrega y con solo el scaffolding inicial. El scope, el PRD y el primer borrador técnico se hicieron con Devpost Learn Skill Pack; el desarrollo continúa con las skills personales de la dueña del proyecto.
 
-Hoy el producto implementa cuatro niveles coherentes:
+Hoy el producto incluye búsqueda de salas por número, acceso de observador antes de participar, chat compartido, aportes de texto y capturas, confirmación de extracciones por quien las subió, información alimentaria que no afecta la evaluación, propuestas de candidatos con aceptación explícita, evaluación determinista y sugerencias acotadas sobre qué habría que cambiar. Las salas tienen cierre en modo lectura, papelera de siete días y recuperación anonimizada por mail. Para habilitar la gestión del creador hay que configurar el envío de correo en Cloudflare; Google todavía no está integrado.
+
+El producto conserva cuatro niveles coherentes:
 
 1. **Sala compartida** — texto, extracción confirmada, candidatos y explicaciones.
 2. **Evidencia heterogénea** — capturas de pantalla con límites reales y confirmación humana.
@@ -79,7 +81,16 @@ La participación estructurada, las encuestas, las grillas y el panel Verify for
 
 - [Decisión de arquitectura](docs/APORIA-ARCHITECTURE-DECISION.md)
 - [Revisión de arquitectura red team](docs/red-team/APORIA-RED-TEAM-ARCHITECTURE.md)
+- [Plan de rondas red team y variant analysis](docs/red-team/APORIA-ROUND-PLAN.md) — las rondas formales todavía no empezaron.
 - [README técnico](TECHNICAL-README.md) — stack, arquitectura, estado de implementación y límites verificables.
+
+## Privacidad y alojamiento
+
+En la instancia oficial, las salas y los mensajes viven en un backend compartido de APORIA. Quien tenga el link o el número de reunión puede leer la sala; compartilos solo con tu grupo. Las capturas se mandan a Gemini para extraer información y APORIA descarta sus bytes al terminar el procesamiento. Las propuestas y aportes confirmados permanecen en la sala hasta que se borra o se vence su período de recuperación.
+
+El creador puede cerrar la sala en modo lectura y después mandarla a papelera. Al reabrirla en modo lectura se quitan nombres, chat y aportes vinculados a participantes. Al eliminarla, se conservan durante siete días solo opciones y datos agregados permitidos para recuperarla; una tarea horaria procesa hasta 100 salas vencidas por ejecución. Cuando ya no quedan salas ni enlaces de acceso vigentes para esa cuenta, también se borra la cuenta del creador. La configuración de Gemini y correo pertenece al operador del backend.
+
+Si hospedás un frontend aparte, el operador del backend tiene que habilitar su origen exacto. Para despliegues en Vercel puede permitir opcionalmente `https://*.vercel.app`; eso habilita el acceso desde cualquier frontend HTTPS hospedado en Vercel y no autentica a quienes llaman a la API. Si clonás APORIA, Apache 2.0 te permite desplegar tu propia app, pero tenés que configurar tu propio backend, base de datos y credenciales; el repo no te da acceso al backend compartido ni a su clave de Gemini.
 
 ## Licencia
 

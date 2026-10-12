@@ -1,0 +1,85 @@
+# Devpost Learn skills usage log
+
+This log records how the official Build With AI: Basics skills are used in this repository and why. It starts on October 12, 2026; it does not claim the workflow or these notes existed earlier.
+
+## October 12, 2026 — `1-start`
+
+- **Used:** Read the learner's completed answers in `docs/preguntas.md` and created the local learner profile at `devpost/learner-profile.md`.
+- **Why:** The official flow uses reported experience and learning goals to calibrate later planning conversations. The learner asked to answer in a document, so we used those answers rather than asking them to repeat the interview in chat.
+- **Adaptation and boundary:** Added `/devpost/learner-profile.md` to `.gitignore` before creating it, as the skill requires. The profile records only volunteered information. The learner later chose Markdown for planning reviews. Their stated need for small steps is carried forward without treating coding experience as evidence of planning experience.
+- **Status:** Profile created. This does not by itself complete the full hackathon workflow.
+
+## October 12, 2026 — `2-scope`
+
+- **Used:** Inspected the current source and Git history, then drafted `devpost/scope.md` with `status: draft` from the learner's documented answers and the actual repository state.
+- **Why:** The scope needs to describe APORIA as it exists now, preserve the user's intent for event-based coordination, and separate implemented behavior from observer-mode and screenshot-lifecycle gaps.
+- **Adaptation and boundary:** Kept the existing React/TypeScript, Cloudflare Worker, D1, and Gemini architecture in view, honoring the learner's instruction not to replace it. The initial answers left end-to-end success and observer behavior unclear, so the scope was saved as a draft pending clarification rather than filling gaps with invented choices.
+- **Verification:** Inspected source files and Git history; `git diff --check` passed. No test suite or deployment was run for this planning step.
+- **Follow-up:** The learner answered the four review questions in Spanish. Their English translations were added to `docs/questions.md`; the scope draft recorded the desired after-party outcome, read-first participation, judges' need to replay the image flow, and Markdown review preference. The sample-image mechanism and lifecycle details remain open for the PRD/spec.
+- **Approval and clarification:** The learner explicitly approved the scope and clarified that APORIA's core should include a shared chat space for an event, meeting-number entry, closing a space, recovering an accidentally deleted room, and deleting a completed room before the next event. Updated `devpost/scope.md` to `status: approved`; these are product intentions, not implemented features. Added focused behavior questions for `3-prd` to the Spanish questionnaire and a faithful English translation to its copy.
+
+## Workflow checkpoint after `2-scope`
+
+- At this earlier checkpoint, `4-spec`, `5-build`, and `6-ship` had not yet been run. The PRD was still a draft. No code changes should begin until the spec is approved and the build checklist establishes the necessary work.
+
+## October 12, 2026 — `3-prd`
+
+- **Used:** Translated the learner's product answers into `docs/questions.md` and drafted `devpost/prd.md` from the approved scope, the answers, and the current app behavior.
+- **Why:** The PRD turns the approved idea into observable behavior for meeting-number entry, shared chat, AI-assisted planning, the judge demo flow, and room lifecycle.
+- **Adaptation and boundary:** The learner specified separate close, delete, and recover operations. A seven-day trash period with automatic permanent deletion is recorded as their proposal, not an approved requirement. Remaining behavior questions are in `docs/preguntas.md` and its English translation. The PRD stays `draft` until those gaps are resolved and the learner approves it.
+- **Verification:** Read the official PRD template and guide, compared claims with current source, and ran `git diff --check`. No tests or deployment were run; no code was changed.
+- **Follow-up at that point:** The learner specified that chat is for brief coordination notices, not social interaction; screenshots and availability have separate sections; anyone can post with a proposed five-message limit. They also described a clickable demo mode and read-only room reopening with names/chat removed. Those answers were translated into `docs/questions.md` and reflected in the PRD draft. The later clarification below resolved real-time updates and image access/retention; other decisions are still open.
+- **Lifecycle clarification:** The learner separated `close` (read-only, no contributions), `delete` (creator requests deletion of the room and its data), and `recover` (creator restores during a limited period). They proposed a seven-day trash period followed by automatic permanent deletion. They also specified read-only reopening with names and chat removed, restoring only limited nonpersonal event details. The seven-day duration remains a proposal pending approval.
+- **Follow-up answers:** The learner confirmed real-time chat and a strict limit of five messages per person per room. Gemini is the only intended viewer of uploaded images; images are deleted after processing, dietary restrictions need their own section, and duplicate facts from one person's repeat upload should not count twice. The creator enters event context/title after room creation and can sign in with Google. The learner approved informational-only dietary restrictions, optional Google plus disposable email registration, human approval of Gemini extractions, a seven-day trash period, and product-level duplicate handling that does not need to be staged in the demo. English translations were added to `docs/questions.md`.
+- **Open decisions preserved:** the account/recovery mechanism for disposable email; who approves an extraction before sharing; how the official backend is shared with arbitrary frontend hosts; and the Gemini free-tier privacy choice. The source's existing free-tier request behavior is not evidence that users approved this data handling. The scope and PRD now reflect the image lifecycle and informational dietary section. Dietary restrictions and post-processing image deletion are not implemented in source. No code was changed.
+- **Verification:** `git diff --check` passed after the document updates. No tests or deployment were run.
+
+## October 12, 2026 — `4-spec`
+
+- **Started:** The learner approved `devpost/prd.md`; the spec is drafted from the existing React/Vite client, Cloudflare Worker/D1 configuration, Gemini request path, migrations, and the approved product behavior.
+- **Recommendations to review, not yet implementation authorization:** use Cloudflare Durable Objects for live room broadcasts while D1 remains the durable source of truth; use a scheduled Worker to purge expired rooms; use optional Google OAuth plus one-time email links for disposable-email registration. Technical choices with product, privacy, or account consequences remain listed for the learner in `docs/preguntas.md`.
+- **Privacy finding:** the official Gemini API terms distinguish unpaid and paid use. The current free quota may use submitted content to improve Google products and may allow human review; therefore deleting an image from APORIA after the response does not mean it was never shared with Google's service or that Google's handling is controlled by APORIA. This is recorded as an open product decision, with a source link in `devpost/spec.md`.
+- **Status:** `devpost/spec.md` is a draft pending the learner's review. No code has been changed. Tests and deployment were not run.
+
+## October 12, 2026 — switch to the learner's personal skills
+
+- **Instruction:** The learner asked to stop using the isolated Devpost skill pack and continue with their personal skills. Removed `hackathon-sandbox/`; no personal skill files were changed.
+- **Used:** `software-archaeology` to inspect the existing React/Worker/D1 implementation and preserve its architecture; `secure-by-construction` to keep room writes on the server, enforce the chat cap in D1, limit claim approval to its author, deduplicate confirmed facts, and discard uploaded image bytes after Gemini responds.
+- **Why:** APORIA already has a working decision engine and data model. The requested changes need to fit that system, enforce permissions at the Worker boundary, and avoid retaining screenshot bytes.
+- **First implementation increment:** Added additive D1 schema for meeting codes, chat messages, and per-claim review decisions; added meeting-number lookup and observer-first access; added D1 chat with two-second refresh and a server-side five-message cap; added screenshot preview confirmation, contributor-only claim approval, image-byte redaction after extraction (including older stored images), informational dietary notes, and same-person duplicate handling.
+- **Still outstanding:** Creator authentication and recovery, room close/delete/restore lifecycle, demo fixture, and cross-origin deployment configuration. The specification now records the learner's recent answers and labels this partial implementation accurately.
+- **Verification:** No tests or build were run in this implementation step.
+
+## October 12, 2026 — creator account and room lifecycle increment
+
+- **Used:** Continued with the personal `software-archaeology` and `secure-by-construction` skills already recorded above; no Devpost skill-pack instructions were used for this implementation increment.
+- **Why:** The learner asked to proceed with actual APORIA improvements after the planning decisions were completed. The existing Worker/D1 architecture already owns room persistence, so the lifecycle and creator boundary were implemented there.
+- **Changes:** Added an additive migration for creator accounts, hashed one-time email tokens, creator sessions, and lifecycle metadata. Added Resend-based creator email verification, creator-only close/reopen-read-only/delete actions, deletion of room contributions and identity rows, a seven-day allowlisted recovery snapshot, read-only recovery, and an hourly Cron Trigger that purges expired rooms and stale auth rows. The snapshot restores generic option labels with day/time/price only; this is narrower than the approved PRD examples and is documented as such. Added bilingual creator controls and read-only states.
+- **Configuration and limits:** Email actions require `RESEND_API_KEY`, `CREATOR_EMAIL_FROM`, and `APORIA_APP_ORIGIN` in the Worker environment. Google sign-in, cross-origin API access, the demo fixture, and broader abuse controls are still missing. The scheduled purge has a 100-room batch cap, so a large backlog can delay physical deletion beyond the hourly schedule. Purging from D1 does not control provider processing or platform backups.
+- **Verification:** `git diff --check` passed. No tests, typecheck/build, migration, email delivery, browser exercise, or deployment was run. The new lifecycle migration remains unapplied and these paths are not yet demonstrated end to end.
+
+
+## October 12, 2026 — synthetic screenshot fixture
+
+- **Used:** Personal `imagegen` skill with the built-in image generation tool.
+- **Why:** Reviewers should be able to try image extraction without finding or uploading their own personal screenshot.
+- **Asset:** Added `public/demo/availability-sample.png`, a synthetic mobile chat screenshot containing a generic `Demo` sender and “El sábado puedo después de las 20. Soy vegetariana.” The interface includes only generic placeholder UI symbols; it has no real people's data.
+- **Flow:** Added a button that preloads the asset into the existing screenshot preview. The participant still has to inspect it, affirm the checkbox, submit it to the regular extraction endpoint, and approve any extracted claim. The image is not uploaded automatically.
+- **Documentation:** Replaced `docs/DEMO-SCRIPT.md` with reviewer steps, fixture provenance, and deployment caveats. A guided Demo mode on the landing page remains missing.
+- **Verification:** Visually inspected the fixture and confirmed its format and size (PNG, 941 × 1672, about 932 KiB; below the 1.5 MB upload cap). `git diff --check` passed. No build, test, browser flow, Gemini call, or deployment was run.
+
+## October 12, 2026 — lifecycle boundaries and shared-backend configuration
+
+- **Used:** Personal `destination-driven-construction`, `secure-by-construction`, and `software-archaeology`; used `red-team-auditing` and `invariant-hunting` for a code-reading preflight on the lifecycle paths. This was not a completed experimental red-team round. `variant-analysis` is reserved for sibling-path review after a finding is confirmed and fixed.
+- **Why:** The learner asked to finish the actual system before building a guided demo, then run multiple red-team rounds and variant analysis. The product's target includes rooms hosted on the shared backend from separately hosted frontends, with creator-only lifecycle operations.
+- **Code changes:** Recovery now checks the verified owner before restoration and groups room restoration, one-time token consumption, and creator-session creation in one D1 batch. Reopening a closed room strips participant/chat/source data and preserves only anonymized candidate options plus an aggregate participant count. Deletion requires the room to be closed or reopened read-only. Close/reopen verify their conditional updates changed the room. Deletion claims the room's `trashed` state first and conditions child-data deletion on that exact state transition. The seven-day allowlisted recovery snapshot keeps candidate names, schedule, price, participant count, optional creator-entered attendance count, and optional code for another active room. Creators can request a new email login link after losing their local session; after the last owned room and any valid auth link expire, the scheduled task removes the creator account and sessions. The Worker provides exact-origin CORS and an opt-in `https://*.vercel.app` pattern using `APORIA_ALLOWED_ORIGINS`; the client can target the shared API using `VITE_APORIA_API_ORIGIN`.
+- **Architecture boundary documented:** The shared backend operator can list exact frontend origins or deliberately allow any HTTPS Vercel origin; CORS is browser policy, not authentication. Apache-2.0 permits self-hosting but does not grant access to the shared backend. Signup throttling, cost limits, production configuration, and live validation remain unresolved.
+- **Verification:** `npm run typecheck` and `git diff --check` passed after the source and documentation edits. At that time no tests, full build, migration application, email send, browser run, or deployment had been performed for this increment; the later local red-team probe is recorded below.
+
+## October 12, 2026 — first local red-team probe and variant analysis
+
+- **Used:** Personal `red-team-auditing`, `invariant-hunting`, `variant-analysis`, `secure-by-construction`, and `audit-before-patch` skills. This is the first experimental red-team work; Round 1 remains partial.
+- **Finding R1-01:** A valid participant session could confirm an extracted claim with a `participantId` absent from the room. Direct Worker+D1 reproduction returned HTTP 200 and persisted that ID into a fact and evaluator constraint. A second reproduction using an unknown participant ID already present in the stored claim also succeeded.
+- **Variant analysis:** Traced every participant-ID source and sink. The confirm-claim route was the only endpoint accepting participant attribution from client/provider data; join, chat, and candidate writes derive attribution server-side. Re-tested explicit unknown override, stored unknown attribution, explicit blank/null attribution, and valid assignment to a different participant in the same room.
+- **Fix:** Require the final attributed ID to exist in the loaded room snapshot. The client now sends `null` for an empty selector rather than falling back to an unmatched extractor string. This preserves the ability for an uploader to confirm a claim about another actual room participant.
+- **Verification:** Before fix, both unknown-ID vectors returned HTTP 200. After fix, both return HTTP 400, explicit null requires selection, and assigning to another real room participant returns HTTP 200. The original override reproduction was rerun after the fix. Local Worker and D1 ran with synthetic fixtures; no Gemini or email provider was called. `npm run typecheck` and `git diff --check` pass. Local migrations 0003 and 0004 are applied. No production database was accessed. Round 1 remains open for token, full ownership, malformed body, race, and lifecycle cases.

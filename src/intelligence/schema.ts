@@ -2,7 +2,7 @@ import type { ClaimKind, ClaimProposal, ExtractionProposal, InputArtifact } from
 import { assertBoundedText, assertCents, assertMinute, assertWeekday } from '../core/model';
 import { ProviderError } from './contracts';
 
-const claimKinds = new Set<ClaimKind>(['availability', 'budget_max', 'area_preference', 'proposal']);
+const claimKinds = new Set<ClaimKind>(['availability', 'budget_max', 'area_preference', 'dietary_note', 'proposal']);
 
 function parseClaim(value: unknown, index: number): ClaimProposal {
   if (!value || typeof value !== 'object') throw new ProviderError('invalid_output', `claim ${index} is not an object`);

@@ -1,7 +1,7 @@
 export const SCHEMA_VERSION = 1 as const;
 
 export type ProposalStatus = 'pending' | 'confirmed' | 'edited' | 'rejected' | 'failed';
-export type ClaimKind = 'availability' | 'budget_max' | 'area_preference' | 'proposal';
+export type ClaimKind = 'availability' | 'budget_max' | 'area_preference' | 'dietary_note' | 'proposal';
 
 export interface Participant {
   id: string;
@@ -140,6 +140,11 @@ export interface DecisionSnapshot {
   preferences: Preference[];
   candidates: Candidate[];
   evaluation: Evaluation | null;
+  recoverySummary?: {
+    nextMeetingCode: string | null;
+    registeredCount: number;
+    attendedCount: number | null;
+  };
 }
 
 export interface RoomEvent {

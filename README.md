@@ -38,21 +38,30 @@ So when APORIA says "this plan works for all five of you," that is a determinist
 
 Once you build something that can turn a pile of human noise into "here's what's actually true, here's what fits," it stops being a dinner-planning app. The same shape solves: when the five of you can actually meet, what apartment fits everyone's budget and commute, what gift everyone can afford to chip in on, where the trip actually works for the whole group's dates. Planning with other people is the same fight everywhere. We built the thing that ends the fight, not another app for one slice of it.
 
-## This isn't a competition throwaway
+## Build With AI: Basics
 
-We built this for the Webflow Cloud competition, and we'd genuinely love to win it — but this isn't going to get abandoned the day after judging. It's Apache 2.0 licensed, which nobody required us to do; we did it because we want people to build on it, fork it, and hold us to it. We're going to keep shipping levels toward the real destination: more ways to drop in evidence, smarter negotiation when the group is stuck, and a fully auditable record of how every plan was decided. What you're looking at is the first honest chapter, not a demo we'll quietly delete.
+APORIA is our project for [Devpost's Build With AI: Basics](https://learn-ai-basics.devpost.com/). Its repository began on September 25, 2026, during the challenge's submission period, with only project scaffolding. The initial scope, PRD, and technical draft were created with the Devpost Learn Skill Pack; continued development now uses the project owner's personal engineering skills.
 
 ## Try it right now
 
 **[aporia-bbb3f7.webflow.io](https://aporia-bbb3f7.webflow.io/)** — no account, no install. Start a room, drop in something messy, and watch it turn into an actual answer.
 
-The current coherent product state includes shared rooms, text and screenshot evidence, human-confirmed extraction, Gemini candidate proposals with explicit acceptance, deterministic evaluation, and bounded “what would need to change?” suggestions. Links, polls, structured participation, and the Verify surface remain part of the destination architecture.
+The app includes meeting-number lookup, observer-first access, shared chat, text and screenshot evidence, contributor-confirmed extraction, informational dietary notes, Gemini candidate proposals, deterministic evaluation, and bounded change suggestions. Room creators can close a room read-only, move it to a seven-day trash, and recover an anonymized read-only snapshot by email. Email delivery must be configured in Cloudflare; Google sign-in is not implemented.
 
 ## Design documents
 
 - [Architecture decision](docs/APORIA-ARCHITECTURE-DECISION.md)
 - [Red-team architecture review](docs/red-team/APORIA-RED-TEAM-ARCHITECTURE.md)
+- [Red-team round and variant-analysis plan](docs/red-team/APORIA-ROUND-PLAN.md) — formal rounds have not started yet.
 - [Technical README](TECHNICAL-README.md) — stack, architecture, and implementation status, for anyone who wants to see how it actually works.
+
+## Privacy and hosting
+
+The official instance stores rooms and messages in APORIA's shared backend. Anyone with a room link or meeting number can read that room, so share it only with your group. Screenshots are sent to Gemini for extraction; APORIA discards their bytes when processing finishes. Proposals and confirmed contributions remain in the room until it is deleted or its recovery period expires.
+
+The creator can close a room read-only, then move it to trash. Reopening it read-only removes names, chat, and participant-linked contributions. Deletion keeps only the approved option details and aggregate data for seven days so the room can be recovered; the hourly purge processes up to 100 expired rooms per run. When an account has no remaining rooms or unexpired access links, APORIA deletes it too. The backend operator controls Gemini and email credentials.
+
+A separately hosted frontend needs its exact origin enabled by the backend operator. For Vercel deployments, the operator can optionally allow `https://*.vercel.app`; that broadens browser access to any HTTPS Vercel-hosted frontend and does not authenticate API callers. Apache-2.0 lets anyone clone and self-host APORIA, with their own backend, database, and credentials; it does not grant access to APORIA's shared backend or Gemini key.
 
 ## License
 
