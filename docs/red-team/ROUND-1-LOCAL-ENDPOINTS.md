@@ -5,7 +5,7 @@
 **Revision:** source state and probe results are included in the implementation commit.
 **Threat model:** unauthenticated internet user or room participant can issue arbitrary requests and replay requests; cannot read Worker secrets or alter server code.
 **Scope exercised:** room creation and meeting-code lookup, observer message read, participant join, participant chat authorization, five-message limit, idempotency replay, claim attribution and uploader ownership, creator-link consumption, selected lifecycle/recovery/purge transitions, and request-body boundaries/content-type handling.
-**Not exercised:** magic-link issuance by the live email provider, expiry boundaries, duplicate review, successful Gemini-backed proposal paths, the real delete-and-email sequence, concurrent requests, conflicting content-length/body streams, and actual browser behavior.
+**Not exercised:** magic-link issuance by the live email provider, expiry boundary timing (only an already-expired link was checked), successful Gemini-backed proposal paths, the real delete-and-email sequence, concurrent state-changing writes beyond duplicate claim review, conflicting content-length/body streams, and actual browser behavior.
 
 ## Evidence
 
@@ -109,17 +109,21 @@ Synthetic local D1 rows exercised the remaining reachable identity and lifecycle
 | Owner's valid recovery link | HTTP 200; room became `recovered_read_only`, preserved the synthetic option and aggregate counts, and omitted its area | CONFIRMED BY INDUCTION |
 | Replay the recovery link | HTTP 400 | CONFIRMED BY INDUCTION |
 | Invoke scheduled purge on a synthetic trashed room with an expired recovery deadline | Local Explorer returned success; room lookup returned 404, D1 room and orphaned creator accounts were absent | CONFIRMED BY INDUCTION |
+| Confirm a pending claim whose value already exists for that participant | HTTP 200 with `duplicate: true`; no new fact or room revision | CONFIRMED BY INDUCTION |
+| Confirm the same claim again after its decision is stored | HTTP 409; no second decision | CONFIRMED BY INDUCTION |
+| Two simultaneous requests review the same duplicate claim | One HTTP 200; the other HTTP 404 after the proposal became completed; no duplicate decision or fact | CONFIRMED BY INDUCTION; no integrity defect observed |
+| Consume a synthetic creator login link whose expiry is in the past | HTTP 400 `invalid or expired link`; no session created | CONFIRMED BY INDUCTION |
 
 The delete endpoint's successful branch was not exercised because email configuration is absent; the test only confirmed the room is not trashed if recovery-email setup fails. The purge test manually seeded an expired local room and invoked the Worker with its configured hourly cron expression. After all probes, the synthetic room was purged, including its test creator accounts and token rows. No production service was contacted.
 
 ## Round status
 
-The tested subset had no remaining confirmed finding. This is not a pass for the whole round: only synthetic creator-link consumption and selected lifecycle transitions were exercised; live email issuance, successful delete-plus-email, expiry boundaries, duplicate review, races, content-length/body-stream discrepancies, and actual browser behavior remain untested.
+The tested subset had no remaining confirmed finding. This is not a pass for the whole round: only synthetic creator-link consumption and selected lifecycle transitions were exercised; live email issuance, successful delete-plus-email, expiry boundary timing, broad concurrency/state races, content-length/body-stream discrepancies, and actual browser behavior remain untested. The single duplicate-claim concurrency probe produced one success and one completed-proposal 404 without duplicate writes.
 
 ## Next probes
 
 1. Exercise magic-link expiry boundaries, creator-access request races/rate limits, and the successful delete/email sequence when a safe local email stub is available.
-2. Exercise duplicate claim review and stale revisions in addition to the uploader ownership check.
+2. Exercise stale revisions and additional duplicate claim shapes in addition to the uploader ownership and duplicate-review checks.
 3. Exercise body/content-length mismatch and error serialization beyond the basic malformed JSON and size-cap probes.
 4. Exercise competing chat requests at the five-message boundary and competing lifecycle/state updates.
 5. Record each confirmed defect separately, perform variant analysis across sibling paths, then replay the original induction after fixes.
