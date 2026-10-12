@@ -235,11 +235,14 @@ async function createProposal(env: Env, request: Request, roomId: string): Promi
   const names = snapshot.participants.map((item) => item.displayName);
   try {
     const proposal = await new GeminiProvider(env).extract({ artifact, participantNames: names });
-    const retainedArtifact = kind === 'image' ? { ...artifact, content: '' } : artifact;
+    const redactedImageArtifact = kind === 'image' ? {
+      id: artifact.id, kind: 'image' as const, content: '', contentHash: '', createdAt: artifact.createdAt, participantId: artifact.participantId,
+    } : null;
+    const retainedArtifact = redactedImageArtifact ?? artifact;
     const stored = await env.DB.prepare(`INSERT INTO proposals (id, room_id, artifact_json, claims_json, provider_json, status, created_at)
       SELECT ?, ?, ?, ?, ?, ?, ? WHERE (SELECT status FROM rooms WHERE id = ?) = 'active'`).bind(proposal.id, roomId, JSON.stringify(retainedArtifact), JSON.stringify(proposal.claims), JSON.stringify(proposal.provider), proposal.status, artifact.createdAt, roomId).run();
     if ((stored.meta?.changes ?? 0) !== 1) return json({ error: 'this room is read-only' }, 409);
-    const responseProposal = kind === 'image' ? { ...proposal, artifact: { ...proposal.artifact, content: '' } } : proposal;
+    const responseProposal = redactedImageArtifact ? { ...proposal, artifact: redactedImageArtifact } : proposal;
     return json({ proposal: responseProposal });
   } catch (error) {
     if (error instanceof ProviderError) {
