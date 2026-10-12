@@ -33,7 +33,13 @@ The invariant under review is: **one valid room action must not make stored stat
 | Candidate discovery → provider call with all constraints | No dedicated application quota; input grows with stored constraints | Not induced; Gemini intentionally not called |
 | Meeting-code lookup → serialize full snapshot | Existing 30/10s per-IP burst cap; room payload can still grow over time | No large-room lookup payload probe beyond 20/20 |
 
-No attempted variant is marked fixed or falsified without an independent induction. Local cleanup removed the synthetic room and its rows; the Wrangler server was stopped.
+## Contended revision writes
+
+**CONFIRMED BY INDUCTION:** two simultaneous participant joins both returned HTTP 200 and the resulting snapshot contained both names with revision incremented twice. A separate 16-request candidate-add burst used the same expected revision. Exactly one candidate was stored at the next revision; the other 15 requests returned HTTP 409 for stale revision. A follow-up room read showed one candidate and the matching revision, so the tested write path preserved a single-winner state under this local D1 contention pattern.
+
+Wrangler logged roughly 20.3 seconds for the 15 stale responses in that 16-request burst. This is a local observation, affected by Wrangler's local proxy/D1 scheduling and a dropped-connection retry visible in its logs; it is not a production latency estimate. The test does flag a user-experience question for real multi-location or production load. No retry loop was run by the client.
+
+No attempted variant is marked fixed or falsified without an independent induction. Local cleanup removed all three synthetic rooms and their rows; a D1 query confirmed no fixture rooms remained, and the Wrangler server was stopped.
 
 ## Decision needed before aggregate caps
 
