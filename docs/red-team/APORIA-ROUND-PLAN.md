@@ -34,7 +34,7 @@ A round is complete only when its findings, falsified vectors, reproductions, fi
 
 ## Current status
 
-- Round 1 local endpoint probe: **partial / open**; direct Worker+D1 probes exercised room lookup, observer reads, join, chat authorization, the five-message cap, idempotent replay, and claim attribution. Finding R1-01 (non-member claim attribution) was reproduced, fixed, and checked across sibling attribution paths. Creator-link, full claim ownership/duplicate review, malformed-body, concurrency, and lifecycle vectors remain untested. See [Round 1 report](ROUND-1-LOCAL-ENDPOINTS.md).
+- Round 1 local endpoint probe: **partial / open**; direct Worker+D1 probes exercised room lookup, observer reads, join, chat authorization, the five-message cap, idempotent replay, claim attribution, malformed JSON, the byte cap, JSON value types, and content-type handling. Findings R1-01 (non-member claim attribution), R1-02 (wrong-type coercion), and R1-03 (ignored request media type) were reproduced, fixed, and checked across sibling paths. Creator-link, full claim ownership/duplicate review, body-stream/content-length discrepancies, concurrency, and lifecycle vectors remain untested. See [Round 1 report](ROUND-1-LOCAL-ENDPOINTS.md).
 - Formal integrated red-team rounds: **not started**.
 - Variant analysis: **partial**; R1-01's two attribution sources and empty-selector path were traced and tested after the fix. Variant analysis for later findings has not started.
 - Source-reading preflight: found lifecycle ordering and concurrency concerns during construction; these were patched, but no exploit reproduction was run, so they are not reported as confirmed findings.

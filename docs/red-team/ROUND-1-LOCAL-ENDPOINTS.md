@@ -4,8 +4,8 @@
 **Date:** 2026-10-12.
 **Revision:** source state and probe results are included in the implementation commit.
 **Threat model:** unauthenticated internet user or room participant can issue arbitrary requests and replay requests; cannot read Worker secrets or alter server code.
-**Scope exercised:** room creation and meeting-code lookup, observer message read, participant join, participant chat authorization, five-message limit, idempotency replay, and claim attribution.
-**Not exercised:** creator magic-link issuance/consumption, per-claim ownership checks against another uploader, duplicate review, Gemini-backed proposal paths, lifecycle transitions, concurrent requests, malformed/oversized body boundaries, and browser behavior.
+**Scope exercised:** room creation and meeting-code lookup, observer message read, participant join, participant chat authorization, five-message limit, idempotency replay, claim attribution, and content-type handling.
+**Not exercised:** creator magic-link issuance/consumption, per-claim ownership checks against another uploader, duplicate review, successful Gemini-backed proposal paths, lifecycle transitions, concurrent requests, conflicting content-length/body streams, and actual browser behavior.
 
 ## Evidence
 
@@ -23,6 +23,9 @@ Temporary local state only. Applied migrations `0003_meeting_codes_chat.sql` and
 | Replay an existing idempotency key with altered message text | HTTP 200, original stored message returned, no sixth message created | CONFIRMED BY INDUCTION |
 | Post using a fabricated session token | HTTP 401 | CONFIRMED BY INDUCTION |
 | Read chat after posts without a participant token | HTTP 200; exactly five messages visible | CONFIRMED BY INDUCTION |
+| Invalid JSON body | HTTP 400 with a bounded parse error | CONFIRMED BY INDUCTION |
+| Body larger than the 2,100,000-byte cap | HTTP 400, `request body too large` | CONFIRMED BY INDUCTION |
+| JSON sent as `text/plain` with `Origin: https://attacker.example` | Before R1-03 fix, room creation returned HTTP 200 with no `Access-Control-Allow-Origin` response header | CONFIRMED BY INDUCTION (request processing); browser behavior not directly run |
 
 The predictions were that the valid room flow would work, invalid meeting codes and fabricated session tokens would fail, observers could read, and the server would enforce the chat cap under a direct API client. The observed results matched those predictions. Reproduction was a temporary `node --input-type=module -e` script issuing the requests listed above; it was not saved as a repository test.
 
@@ -50,14 +53,50 @@ The original non-member override reproduction was rerun after the fix and return
 
 Replaying the same chat idempotency key with different text returned the original write; this is expected duplicate suppression, but clients must use a new key for a genuinely new message.
 
+## Finding R1-02 — wrong JSON value types were silently coerced
+
+**Before-fix status:** CONFIRMED BY INDUCTION.
+**Impact:** direct API callers could store malformed but plausible text/options. For example, an object title became `"[object Object]"`, an object chat message became `"[object Object]"`, and numeric strings/object fields became a candidate with stringified values. This is data integrity and usability damage, not privilege escalation.
+**Root cause:** multiple endpoints called `String(...)` or `Number(...)` on untrusted parsed JSON before validating the expected type.
+
+Before the fix, a room-creation request `{ "title": { "unexpected": "object" }, "displayName": 42 }` returned HTTP 200 and persisted `"[object Object]"` and `"42"`. A chat request with an object message returned HTTP 201 and stored `"[object Object]"`. A candidate request accepted an object title/area/currency and numeric strings, returning HTTP 200 with the coerced values.
+
+### Variant analysis and fix verification
+
+`rg` over every `String(input.*)` and `Number(input.*)` call found the same coercion family in room creation, join, chat, text proposals, idempotency keys, candidate fields/revisions, creator email/token parsing, attendance count, and next-room code. The fix adds shared boundary helpers for text and numeric values; candidate optionals must be null or the declared type. The creator delete form now sends its attendance count as a number. Existing browser form code already sends candidate numeric fields and expected revisions as numbers.
+
+| Variant | Post-fix result | Status |
+| --- | --- | --- |
+| Object/number room title and display name | HTTP 400 | CONFIRMED BY INDUCTION; fix holds |
+| Object participant display name | HTTP 400 | CONFIRMED BY INDUCTION; fix holds |
+| Object chat message or idempotency key | HTTP 400 | CONFIRMED BY INDUCTION; fix holds |
+| Object text proposal content | HTTP 400 before provider call | CONFIRMED BY INDUCTION; fix holds |
+| Object candidate title/area or non-text currency | HTTP 400 | CONFIRMED BY INDUCTION; fix holds |
+| Numeric strings or null revision | HTTP 400 | CONFIRMED BY INDUCTION; fix holds |
+| Object email or creator token | HTTP 400 before email send or creator-link consumption | CONFIRMED BY INDUCTION; fix holds |
+| Valid create, join, chat, and numeric candidate fields | HTTP 200 / 201 as expected | CONFIRMED BY INDUCTION; valid path preserved |
+| Malformed JSON and payload above 2,100,000 bytes | HTTP 400 for both before and after fix | CONFIRMED BY INDUCTION; no defect |
+
+Afterward, the four temporary rooms created during this probe and their child rows were removed from local D1. No provider was called and no production database was accessed. `npm run typecheck` and `git diff --check` pass.
+
+## Finding R1-03 — body parsing ignored the request media type
+
+**Before-fix status:** CONFIRMED BY INDUCTION for server-side processing; browser impact remains a protocol-level inference.
+**Impact:** a request labeled `text/plain` but containing JSON could create a room even when it supplied an unapproved `Origin`; the API did not block the request, although the response omitted CORS permission. Since room creation is intentionally public, this does not cross a login or ownership boundary. It makes a simple cross-origin browser request a potential way to consume shared resources. It does not stop direct scripts or bots; signup/resource controls remain open work.
+**Root cause:** the common JSON body parser parsed JSON bytes without checking `Content-Type`; the CORS wrapper only decorates responses and does not block request processing by origin.
+
+Before the fix, `POST /api/rooms` with `Origin: https://attacker.example`, `Content-Type: text/plain`, and a valid JSON body returned HTTP 200 and created a room. This was induced with Node `fetch`, not a real browser. After the fix, the same request returns HTTP 400 with `content-type must be application/json`. `application/json; charset=utf-8` still succeeds. The common parser also returned HTTP 400 for `text/plain` requests to chat, proposal, and creator-access endpoints, so one boundary check covers all body-parsing routes. Actual browser preflight/response behavior remains untested.
+
+This narrows the browser-based simple-request path; it is not an abuse-control system. A direct client can still call the public endpoint with `application/json`, so rate limits and resource quotas remain required before arbitrary shared-backend traffic.
+
 ## Round status
 
 The tested subset had no remaining confirmed finding. This is not a pass for the whole round because creator-link consumption, claim ownership checks against another uploader, duplicate review, malformed/oversized body boundaries, races, and lifecycle transitions remain untested.
 
 ## Next probes
 
-1. Exercise creator-link token single-use, expiry, room ownership and fresh-session behavior with a local email stub or seeded local D1 rows.
+1. Exercise creator-link token single-use, expiry, room ownership and fresh-session behavior with seeded local D1 rows; do not send email.
 2. Exercise claim approval by the submitting participant versus another participant, duplicate review and stale revisions.
-3. Exercise malformed JSON, both body-size limits, invalid field types, and error serialization.
+3. Exercise body/content-length mismatch, unusual content types, and error serialization beyond the basic malformed JSON and size-cap probes.
 4. Exercise competing chat requests at the five-message boundary and competing state updates.
 5. Record each confirmed defect separately, perform variant analysis across sibling paths, then replay the original induction after fixes.

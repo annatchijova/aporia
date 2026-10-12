@@ -24,6 +24,8 @@ function json(data: unknown, status = 200): Response {
 }
 
 async function body(request: Request): Promise<Record<string, unknown>> {
+  const contentType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
+  if (contentType !== 'application/json') throw new Error('content-type must be application/json');
   const length = Number(request.headers.get('content-length') ?? 0);
   if (length > 2_100_000) throw new Error('request body too large');
   const raw = await request.arrayBuffer();
@@ -102,15 +104,25 @@ async function commitEvent(env: Env, snapshot: DecisionSnapshot, event: RoomEven
 }
 
 function idempotencyKey(input: Record<string, unknown>): string {
-  return assertBoundedText(String(input.idempotencyKey ?? ''), 'idempotencyKey', 128);
+  return textInput(input.idempotencyKey, 'idempotencyKey', 128);
+}
+
+function textInput(value: unknown, field: string, max: number): string {
+  if (typeof value !== 'string') throw new Error(`${field} must be text`);
+  return assertBoundedText(value, field, max);
+}
+
+function numberInput(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${field} must be a number`);
+  return value;
 }
 
 function routePath(url: URL): string { return url.pathname.replace(/^\/[^/]+(?=\/api\/)/, ''); }
 
 async function createRoom(env: Env, request: Request): Promise<Response> {
   const input = await body(request);
-  const title = assertBoundedText(String(input.title ?? ''), 'title', 120);
-  const displayName = assertBoundedText(String(input.displayName ?? ''), 'displayName', 80);
+  const title = textInput(input.title, 'title', 120);
+  const displayName = textInput(input.displayName, 'displayName', 80);
   const roomId = crypto.randomUUID();
   const participantId = crypto.randomUUID();
   const token = `${crypto.randomUUID()}-${crypto.randomUUID()}`;
@@ -157,7 +169,7 @@ async function postRoomMessage(env: Env, request: Request, roomId: string): Prom
   const actor = await session(request, env, roomId);
   if (!actor) return json({ error: 'join the room before posting' }, 401);
   const input = await body(request);
-  const message = assertBoundedText(String(input.message ?? ''), 'message', 280);
+  const message = textInput(input.message, 'message', 280);
   const key = idempotencyKey(input);
   const messageId = crypto.randomUUID();
   const createdAt = now();
@@ -181,7 +193,7 @@ async function postRoomMessage(env: Env, request: Request, roomId: string): Prom
 async function joinRoom(env: Env, request: Request, roomId: string): Promise<Response> {
   const blocked = await requireActive(env, roomId); if (blocked) return blocked;
   const input = await body(request);
-  const displayName = assertBoundedText(String(input.displayName ?? ''), 'displayName', 80);
+  const displayName = textInput(input.displayName, 'displayName', 80);
   if (!await readRoom(env, roomId)) return json({ error: 'room not found' }, 404);
   const participantId = crypto.randomUUID();
   const token = `${crypto.randomUUID()}-${crypto.randomUUID()}`;
@@ -215,7 +227,7 @@ async function createProposal(env: Env, request: Request, roomId: string): Promi
     content = image.data;
     artifactExtras = { mimeType: image.mimeType, byteLength: image.byteLength };
   } else {
-    content = assertBoundedText(String(input.content ?? ''), 'content', 12_000);
+    content = textInput(input.content, 'content', 12_000);
   }
   const snapshot = await readRoom(env, roomId);
   if (!snapshot) return json({ error: 'room not found' }, 404);
@@ -243,7 +255,7 @@ async function confirmClaim(env: Env, request: Request, roomId: string, proposal
   const actor = await session(request, env, roomId);
   if (!actor) return json({ error: 'valid room session required' }, 401);
   const input = await body(request);
-  const expectedRevision = Number(input.expectedRevision);
+  const expectedRevision = numberInput(input.expectedRevision, 'expectedRevision');
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) return json({ error: 'expectedRevision is required' }, 400);
   const proposal = await env.DB.prepare('SELECT claims_json as claims, artifact_json as artifact FROM proposals WHERE id = ? AND room_id = ? AND status = ?').bind(proposalId, roomId, 'pending').first<{ claims: string; artifact: string }>();
   if (!proposal) return json({ error: 'pending proposal not found' }, 404);
@@ -291,9 +303,16 @@ async function addCandidate(env: Env, request: Request, roomId: string): Promise
   const actor = await session(request, env, roomId);
   if (!actor) return json({ error: 'valid room session required' }, 401);
   const input = await body(request);
-  const expectedRevision = Number(input.expectedRevision);
+  const expectedRevision = numberInput(input.expectedRevision, 'expectedRevision');
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) return json({ error: 'expectedRevision is required' }, 400);
-  const candidate: Candidate = { id: crypto.randomUUID(), title: assertBoundedText(String(input.title ?? ''), 'title', 120), weekday: assertWeekday(Number(input.weekday)), startMinute: assertMinute(Number(input.startMinute), 'startMinute'), endMinute: assertMinute(Number(input.endMinute), 'endMinute'), priceCents: input.priceCents === null || input.priceCents === undefined ? null : assertCents(Number(input.priceCents), 'priceCents'), currency: input.priceCents === null || input.priceCents === undefined ? null : assertBoundedText(String(input.currency ?? 'ARS'), 'currency', 8).toUpperCase(), area: input.area ? assertBoundedText(String(input.area), 'area', 80) : null, source: { kind: 'manual', ref: `participant:${actor.participantId}` } };
+  const title = textInput(input.title, 'title', 120);
+  const weekday = assertWeekday(numberInput(input.weekday, 'weekday'));
+  const startMinute = assertMinute(numberInput(input.startMinute, 'startMinute'), 'startMinute');
+  const endMinute = assertMinute(numberInput(input.endMinute, 'endMinute'), 'endMinute');
+  const priceCents = input.priceCents === null || input.priceCents === undefined ? null : assertCents(numberInput(input.priceCents, 'priceCents'), 'priceCents');
+  const currency = priceCents === null ? null : textInput(input.currency ?? 'ARS', 'currency', 8).toUpperCase();
+  const area = input.area === null || input.area === undefined ? null : textInput(input.area, 'area', 80);
+  const candidate: Candidate = { id: crypto.randomUUID(), title, weekday, startMinute, endMinute, priceCents, currency, area, source: { kind: 'manual', ref: `participant:${actor.participantId}` } };
   const snapshot = await readRoom(env, roomId);
   if (!snapshot) return json({ error: 'room not found' }, 404);
   if (snapshot.revision !== expectedRevision) return json({ error: 'stale room revision', currentRevision: snapshot.revision }, 409);
@@ -307,7 +326,7 @@ async function discoverCandidates(env: Env, request: Request, roomId: string): P
   const actor = await session(request, env, roomId);
   if (!actor) return json({ error: 'valid room session required' }, 401);
   const input = await body(request);
-  const expectedRevision = Number(input.expectedRevision);
+  const expectedRevision = numberInput(input.expectedRevision, 'expectedRevision');
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) return json({ error: 'expectedRevision is required' }, 400);
   const key = idempotencyKey(input);
   const existing = await env.DB.prepare('SELECT id, base_revision as baseRevision, drafts_json as drafts, provider_json as provider, warnings_json as warnings, status FROM candidate_proposals WHERE room_id = ? AND idempotency_key = ?').bind(roomId, key).first<{ id: string; baseRevision: number; drafts: string; provider: string; warnings: string; status: string }>();
@@ -338,7 +357,7 @@ async function acceptCandidateProposal(env: Env, request: Request, roomId: strin
   const actor = await session(request, env, roomId);
   if (!actor) return json({ error: 'valid room session required' }, 401);
   const input = await body(request);
-  const expectedRevision = Number(input.expectedRevision);
+  const expectedRevision = numberInput(input.expectedRevision, 'expectedRevision');
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) return json({ error: 'expectedRevision is required' }, 400);
   const key = idempotencyKey(input);
   const proposal = await env.DB.prepare('SELECT id, base_revision as baseRevision, drafts_json as drafts, provider_json as provider, warnings_json as warnings, status FROM candidate_proposals WHERE id = ? AND room_id = ?').bind(proposalId, roomId).first<{ id: string; baseRevision: number; drafts: string; provider: string; warnings: string; status: string }>();
@@ -371,7 +390,7 @@ async function calculateRoomRelaxations(env: Env, request: Request, roomId: stri
   const actor = await session(request, env, roomId);
   if (!actor) return json({ error: 'valid room session required' }, 401);
   const input = await body(request);
-  const expectedRevision = Number(input.expectedRevision);
+  const expectedRevision = numberInput(input.expectedRevision, 'expectedRevision');
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) return json({ error: 'expectedRevision is required' }, 400);
   const snapshot = await readRoom(env, roomId);
   if (!snapshot) return json({ error: 'room not found' }, 404);
@@ -382,7 +401,7 @@ async function calculateRoomRelaxations(env: Env, request: Request, roomId: stri
 async function requestCreatorAccess(env: Env, request: Request, roomId: string): Promise<Response> {
   const actor = await session(request, env, roomId);
   const input = await body(request);
-  const email = String(input.email ?? '').trim().toLowerCase();
+  const email = textInput(input.email, 'email', 254).trim().toLowerCase();
   if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: 'valid email required' }, 400);
   const room = await env.DB.prepare("SELECT creator_participant_id as participantId, creator_account_id as accountId, status FROM rooms WHERE id = ?").bind(roomId).first<{ participantId: string | null; accountId: string | null; status: string }>();
   if (!room || room.status === 'trashed') return json({ sent: true });
@@ -401,7 +420,7 @@ async function requestCreatorAccess(env: Env, request: Request, roomId: string):
 
 async function consumeCreatorLink(env: Env, request: Request): Promise<Response> {
   const input = await body(request);
-  const token = String(input.token ?? '');
+  const token = textInput(input.token, 'token', 200);
   if (token.length < 40 || token.length > 200) return json({ error: 'invalid or expired link' }, 400);
   const hash = await tokenHash(token);
   const auth = await env.DB.prepare('SELECT email, room_id as roomId, purpose, expires_at as expiresAt, used_at as usedAt FROM creator_auth_tokens WHERE token_hash = ?').bind(hash).first<{ email: string; roomId: string; purpose: string; expiresAt: string; usedAt: string | null }>();
@@ -493,12 +512,12 @@ async function changeRoomLifecycle(env: Env, request: Request, roomId: string, a
   const registeredCount = await env.DB.prepare("SELECT COALESCE(json_extract(snapshot_json, '$.recoverySummary.registeredCount'), (SELECT COUNT(*) FROM participants WHERE room_id = rooms.id)) as count FROM rooms WHERE id = ?").bind(roomId).first<{ count: number }>().then((result) => result?.count ?? 0);
   let attendedCount: number | null = null;
   let nextMeetingCode: string | null = null;
-  if (input.attendedCount !== undefined && input.attendedCount !== null && input.attendedCount !== '') {
-    attendedCount = Number(input.attendedCount);
+  if (input.attendedCount !== undefined && input.attendedCount !== null) {
+    attendedCount = numberInput(input.attendedCount, 'attendedCount');
     if (!Number.isSafeInteger(attendedCount) || attendedCount < 0 || attendedCount > registeredCount) return json({ error: 'attendedCount must be between 0 and the number of registered people' }, 400);
   }
   if (input.nextMeetingCode !== undefined && input.nextMeetingCode !== null && input.nextMeetingCode !== '') {
-    nextMeetingCode = String(input.nextMeetingCode);
+    nextMeetingCode = textInput(input.nextMeetingCode, 'nextMeetingCode', 8);
     if (!/^\d{8}$/.test(nextMeetingCode)) return json({ error: 'nextMeetingCode must contain 8 digits' }, 400);
     const nextRoom = await env.DB.prepare("SELECT id FROM rooms WHERE meeting_code = ? AND id != ? AND status = 'active'").bind(nextMeetingCode, roomId).first<{ id: string }>();
     if (!nextRoom) return json({ error: 'nextMeetingCode must belong to another active room' }, 400);
