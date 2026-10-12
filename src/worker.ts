@@ -15,6 +15,9 @@ interface Env {
   CREATOR_EMAIL_FROM?: string;
   APORIA_APP_ORIGIN?: string;
   APORIA_ALLOWED_ORIGINS?: string;
+  ROOM_LOOKUP_LIMITER: RateLimit;
+  ROOM_CREATE_LIMITER: RateLimit;
+  ROOM_JOIN_LIMITER: RateLimit;
 }
 
 const jsonHeaders = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
@@ -118,6 +121,30 @@ function numberInput(value: unknown, field: string): number {
 }
 
 function routePath(url: URL): string { return url.pathname.replace(/^\/[^/]+(?=\/api\/)/, ''); }
+
+// Keep anonymous discovery and identity creation behind the edge caps in ADR-0006.
+async function enforcePublicBurstLimit(request: Request, env: Env, url: URL): Promise<Response | null> {
+  const path = routePath(url).replace(/\/$/, '');
+  const method = request.method;
+  const lookupPath = method === 'GET' && /^\/api\/rooms\/by-code\/\d+$/.test(path);
+  const createPath = method === 'POST' && path === '/api/rooms';
+  const joinPath = method === 'POST' && /^\/api\/rooms\/[^/]+\/participants$/.test(path);
+  if (!lookupPath && !createPath && !joinPath) return null;
+
+  const clientIp = request.headers.get('cf-connecting-ip') || 'unknown-client';
+  const limiter = lookupPath ? env.ROOM_LOOKUP_LIMITER : createPath ? env.ROOM_CREATE_LIMITER : env.ROOM_JOIN_LIMITER;
+  const retryAfter = createPath ? 60 : 10;
+  try {
+    const { success } = await limiter.limit({ key: `aporia:${lookupPath ? 'lookup' : createPath ? 'create' : 'join'}:${clientIp}` });
+    if (success) return null;
+    return new Response(JSON.stringify({ error: 'too many requests; try again shortly' }), {
+      status: 429,
+      headers: { ...jsonHeaders, 'retry-after': String(retryAfter) },
+    });
+  } catch {
+    return json({ error: 'request protection is temporarily unavailable' }, 503);
+  }
+}
 
 async function createRoom(env: Env, request: Request): Promise<Response> {
   const input = await body(request);
@@ -646,6 +673,8 @@ export default {
           const allowed = isAllowedOrigin(origin, env);
           return corsResponse(request, env, new Response(null, { status: allowed ? 204 : 403, headers: { 'cache-control': 'no-store' } }));
         }
+        const limited = await enforcePublicBurstLimit(request, env, url);
+        if (limited) return corsResponse(request, env, limited);
         return corsResponse(request, env, await handleApi(request, env));
       }
       return env.ASSETS.fetch(request);
