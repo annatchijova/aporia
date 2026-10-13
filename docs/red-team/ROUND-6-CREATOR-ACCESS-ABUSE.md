@@ -24,6 +24,10 @@ The result disclosed whether the guessed address was registered to that room whe
 - Invalid address syntax remains rejected with HTTP 400 by request validation; that behavior is independent of account existence. Missing room and unregistered account responses remain generic success-shaped responses.
 - The failed-delivery path created zero auth tokens before and after the change because local Resend configuration is absent. No email was sent.
 
+## Timing variant
+
+**PLAUSIBLE HYPOTHESIS (local only):** after the response fix, I measured 40 randomized requests for a registered synthetic email and 40 for an unregistered one against local Wrangler. Each request used a distinct synthetic source IP so the per-IP cap did not censor the sample. Full client-observed round-trip p50 was 14.61 ms for the registered address and 11.81 ms for the unknown address; p90 was 16.84 ms and 13.13 ms respectively. Unknown-address samples included a 63.92 ms outlier. The registered branch performs additional D1 work and reaches the configured-email failure path, which is consistent with the median difference, but local timing is noisy and does not prove a usable remote classifier. Production email delivery was not configured or called. No timing-equalization change was made because a local difference alone does not establish an exploitable production signal, and an artificial delay could add latency without reliably hiding provider-dependent timing.
+
 ## Reproduction
 
 With a local Wrangler server on port 8791, a synthetic account/room fixture, and one synthetic IP, the post-fix boundary probe was:
@@ -38,4 +42,4 @@ Observed output was five `200 null {"sent":true}` responses followed by `429 60 
 
 `npm run typecheck` and `git diff --check` passed. This is a local induction of Worker behavior, not proof of production Cloudflare behavior. Native limiter counters are location-local and eventually consistent; callers with multiple IPs or locations can exceed the effective limit. A shared NAT can also cause legitimate creators to share the cap. The generic response avoids a direct email-existence signal but hides email delivery failures from the caller. Real delivery, logging/monitoring, browser behavior, and deployment remain unverified.
 
-**Disposition:** The HTTP status/body account-existence oracle is fixed and locally rechecked. Round 6 remains partial until deployed behavior, failure observability, response-timing variants, and distributed-IP variants are reviewed.
+**Disposition:** The HTTP status/body account-existence oracle is fixed and locally rechecked. Round 6 remains partial until deployed behavior, failure observability, response-timing variants under realistic network/provider conditions, and distributed-IP variants are reviewed.
