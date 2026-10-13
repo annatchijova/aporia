@@ -107,6 +107,16 @@ No code change was necessary for these tested framing variants: the parser rejec
 
 The valid synthetic room and child rows were deleted from local D1 and the room count was verified as zero. Wrangler was stopped. The full probe commands are preserved in the session history; no reusable test file was added.
 
+## Concurrent chat cap boundary
+
+**Base:** local Worker at `8c48658` (`docs: record request body framing probes`), Wrangler 4.140.0, local D1.
+
+**Prediction:** after one synthetic participant has posted four distinct messages, an eight-request concurrent burst with distinct idempotency keys should persist at most one more message. The accepted count must not exceed the server-side cap of five.
+
+**CONFIRMED BY INDUCTION:** created a disposable room, posted four messages sequentially (all HTTP 201), then sent eight `POST /api/rooms/:id/messages` requests concurrently using the same valid participant session and distinct keys. One request returned HTTP 201; seven returned HTTP 429. A subsequent authenticated list read returned five stored messages and `participantMessageCount: 5`.
+
+The synthetic room, participant, session, messages, and related rows were deleted from local D1; a query verified the room count was zero. Wrangler was stopped. This checks the chat cap's concurrent boundary under local D1 behavior; it does not establish Cloudflare production contention behavior or cover lifecycle races.
+
 ## Additional endpoint checks — creator, recovery, and purge
 
 Synthetic local D1 rows exercised the remaining reachable identity and lifecycle paths without an email or Gemini request:
@@ -136,12 +146,12 @@ The delete endpoint's successful branch was not exercised because email configur
 
 ## Round status
 
-The tested subset had no remaining confirmed finding. This is not a pass for the whole round: only synthetic creator-link consumption and selected lifecycle transitions were exercised; live email issuance, successful delete-plus-email, expiry boundary timing, broad concurrency/state races, conflicting transfer-encoding/content-length handling at Cloudflare's edge, and actual browser behavior remain untested. The single duplicate-claim concurrency probe produced one success and one completed-proposal 404 without duplicate writes.
+The tested subset had no remaining confirmed finding. This is not a pass for the whole round: only synthetic creator-link consumption and selected lifecycle transitions were exercised; live email issuance, successful delete-plus-email, expiry boundary timing, broad concurrency/state races beyond the chat-cap and duplicate-claim cases, conflicting transfer-encoding/content-length handling at Cloudflare's edge, and actual browser behavior remain untested. The single duplicate-claim concurrency probe produced one success and one completed-proposal 404 without duplicate writes.
 
 ## Next probes
 
 1. Exercise magic-link expiry boundaries, creator-access request races/rate limits, and the successful delete/email sequence when a safe local email stub is available.
 2. Exercise stale revisions and additional duplicate claim shapes in addition to the uploader ownership and duplicate-review checks.
 3. Exercise conflicting transfer-encoding/content-length handling at the deployed edge and measure whether buffering before the actual-size check presents material memory pressure.
-4. Exercise competing chat requests at the five-message boundary and competing lifecycle/state updates.
+4. Exercise additional competing lifecycle/state updates; the chat five-message boundary has been exercised locally.
 5. Record each confirmed defect separately, perform variant analysis across sibling paths, then replay the original induction after fixes.

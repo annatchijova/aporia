@@ -148,3 +148,10 @@ This log records how the official Build With AI: Basics skills are used in this 
 - **Observed:** a valid 56-byte chunked create without `Content-Length` returned 200; a 2,100,001-byte chunked JSON body returned 400 `request body too large`; an HTTP/1.1 request declaring two bytes while sending a longer JSON document returned 400 `request body must be valid JSON` and created no room. The local HTTP parser framed the body before the Worker received it.
 - **Disposition:** No bypass confirmed on the local HTTP/1.1 path and no code change needed for these cases. `body()` still buffers the whole decoded body before checking its actual byte length; memory exhaustion was not induced and is recorded only as a resource hypothesis. Cloudflare edge framing and platform request limits remain unverified.
 - **Cleanup:** Deleted the synthetic room and child rows, verified no room remained, and stopped Wrangler. See [Round 1 report](red-team/ROUND-1-LOCAL-ENDPOINTS.md).
+
+## October 12, 2026 — concurrent chat cap boundary
+
+- **Used:** Personal `red-team-auditing`, `invariant-hunting`, and `variant-analysis` skills.
+- **Prediction:** from four stored messages, eight concurrent posts with distinct idempotency keys should persist at most one additional message for the participant.
+- **Observed:** one concurrent request returned HTTP 201, seven returned HTTP 429, and an authenticated read showed five persisted messages and a participant count of five.
+- **Cleanup and limits:** Deleted the synthetic room and all child rows, verified it absent, and stopped Wrangler. This is local D1/Worker evidence; production concurrency and other lifecycle races remain open. See [Round 1 report](red-team/ROUND-1-LOCAL-ENDPOINTS.md).
