@@ -156,3 +156,10 @@ This log records how the official Build With AI: Basics skills are used in this 
 - **Prediction:** from four stored messages, eight concurrent posts with distinct idempotency keys should persist at most one additional message for the participant.
 - **Observed:** one concurrent request returned HTTP 201, seven returned HTTP 429, and an authenticated read showed five persisted messages and a participant count of five.
 - **Cleanup and limits:** Deleted the synthetic room and all child rows, verified it absent, and stopped Wrangler. This is local D1/Worker evidence; production concurrency and other lifecycle races remain open. See [Round 1 report](red-team/ROUND-1-LOCAL-ENDPOINTS.md).
+
+## October 13, 2026 — integrated public-room flow
+
+- **Used:** Personal `destination-driven-construction` to keep product work ordered before demo work, plus `red-team-auditing` and `variant-analysis` to define a narrow integrated threat model, make a falsifiable prediction, and enumerate adjacent room/chat transitions. No official Devpost sandbox skills were used.
+- **Induction:** With local Wrangler+D1 only, created a room, looked it up by the returned meeting number, joined a second synthetic participant, posted one chat message from each session, and read both messages without a session.
+- **Observed:** All six operations returned the expected HTTP statuses; the anonymous chat read returned both messages with their correct display names. No provider or email call was made. The room and child rows were removed, and Wrangler was stopped.
+- **Limits:** This did not exercise creator authentication, close/delete/recovery as one integrated journey, browser behavior, staging, or production. No code change was justified. See [Round 7 report](red-team/ROUND-7-INTEGRATED-PUBLIC-FLOW.md).
