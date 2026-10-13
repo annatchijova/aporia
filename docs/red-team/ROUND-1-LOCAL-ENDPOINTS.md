@@ -5,7 +5,7 @@
 **Revision:** source state and probe results are included in the implementation commit.
 **Threat model:** unauthenticated internet user or room participant can issue arbitrary requests and replay requests; cannot read Worker secrets or alter server code.
 **Scope exercised:** room creation and meeting-code lookup, observer message read, participant join, participant chat authorization, five-message limit, idempotency replay, claim attribution and uploader ownership, creator-link consumption, selected lifecycle/recovery/purge transitions, and request-body boundaries/content-type handling.
-**Not exercised:** magic-link issuance by the live email provider, expiry boundary timing (only an already-expired link was checked), successful Gemini-backed proposal paths, the real delete-and-email sequence, concurrent state-changing writes beyond duplicate claim review, conflicting content-length/body streams, and actual browser behavior.
+**Not exercised:** magic-link issuance by the live email provider, expiry boundary timing (only an already-expired link was checked), successful Gemini-backed proposal paths, the real delete-and-email sequence, concurrent state-changing writes beyond duplicate claim review, conflicting transfer-encoding/content-length framing at Cloudflare's edge, and actual browser behavior.
 
 ## Evidence
 
@@ -89,6 +89,24 @@ Before the fix, `POST /api/rooms` with `Origin: https://attacker.example`, `Cont
 
 This narrows the browser-based simple-request path; it is not an abuse-control system. A direct client can still call the public endpoint with `application/json`, so rate limits and resource quotas remain required before arbitrary shared-backend traffic.
 
+## Body framing and declared-size variants
+
+**Base:** local Worker at `a7d4c84` (`docs: record creator access timing variant`), Wrangler 4.140.0, Node.js `http`/`net` clients, local D1. No production endpoint was used.
+
+**Prediction:** a missing `Content-Length` must not bypass the 2,100,000-byte actual-body cap; a short declared length must not cause bytes beyond the HTTP-framed request to be parsed as part of the same JSON body; a valid chunked JSON request under the cap should still work.
+
+| Variant | Observation | Result |
+| --- | --- | --- |
+| Valid 56-byte JSON sent as HTTP/1.1 chunked with no `Content-Length` | HTTP 200; a synthetic room was created | CONFIRMED BY INDUCTION; valid chunked requests remain supported |
+| Valid JSON sent chunked with 2,100,001 body bytes | HTTP 400 `request body too large` | CONFIRMED BY INDUCTION; actual byte cap holds without a declared length |
+| Raw HTTP/1.1 request declared `Content-Length: 2` but sent a longer JSON document | HTTP 400 `request body must be valid JSON`; no room was created. The local HTTP parser framed only the declared two bytes for the Worker; extra bytes did not complete a valid request body. | FALSIFIED for a body-cap bypass through this mismatch on the local HTTP/1.1 path |
+
+No code change was necessary for these tested framing variants: the parser rejects bodies larger than the actual-byte cap, and the HTTP server defines the body bytes the Worker receives. This does not characterize Cloudflare's deployed HTTP/2/HTTP/3 normalization or conflicting `Transfer-Encoding` and `Content-Length` handling.
+
+**Resource hypothesis, not confirmed:** `request.arrayBuffer()` materializes the complete decoded body before the actual-size check at `src/worker.ts`. Thus a chunked body larger than the application cap is read into memory before rejection. The induction used only a body barely above 2.1 MB and did not measure memory pressure or attempt exhaustion. Platform ingress limits, concurrency, and production behavior remain unmeasured. Consider a streaming byte-counting reader only if later measurement shows material risk; no such change was made here.
+
+The valid synthetic room and child rows were deleted from local D1 and the room count was verified as zero. Wrangler was stopped. The full probe commands are preserved in the session history; no reusable test file was added.
+
 ## Additional endpoint checks — creator, recovery, and purge
 
 Synthetic local D1 rows exercised the remaining reachable identity and lifecycle paths without an email or Gemini request:
@@ -118,12 +136,12 @@ The delete endpoint's successful branch was not exercised because email configur
 
 ## Round status
 
-The tested subset had no remaining confirmed finding. This is not a pass for the whole round: only synthetic creator-link consumption and selected lifecycle transitions were exercised; live email issuance, successful delete-plus-email, expiry boundary timing, broad concurrency/state races, content-length/body-stream discrepancies, and actual browser behavior remain untested. The single duplicate-claim concurrency probe produced one success and one completed-proposal 404 without duplicate writes.
+The tested subset had no remaining confirmed finding. This is not a pass for the whole round: only synthetic creator-link consumption and selected lifecycle transitions were exercised; live email issuance, successful delete-plus-email, expiry boundary timing, broad concurrency/state races, conflicting transfer-encoding/content-length handling at Cloudflare's edge, and actual browser behavior remain untested. The single duplicate-claim concurrency probe produced one success and one completed-proposal 404 without duplicate writes.
 
 ## Next probes
 
 1. Exercise magic-link expiry boundaries, creator-access request races/rate limits, and the successful delete/email sequence when a safe local email stub is available.
 2. Exercise stale revisions and additional duplicate claim shapes in addition to the uploader ownership and duplicate-review checks.
-3. Exercise body/content-length mismatch and error serialization beyond the basic malformed JSON and size-cap probes.
+3. Exercise conflicting transfer-encoding/content-length handling at the deployed edge and measure whether buffering before the actual-size check presents material memory pressure.
 4. Exercise competing chat requests at the five-message boundary and competing lifecycle/state updates.
 5. Record each confirmed defect separately, perform variant analysis across sibling paths, then replay the original induction after fixes.
