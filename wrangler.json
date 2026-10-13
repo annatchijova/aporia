@@ -45,7 +45,7 @@
       "name": "aporia-staging",
       "workers_dev": false,
       "triggers": {
-        "crons": []
+        "crons": ["0 * * * *"]
       },
       "assets": {
         "directory": "./dist",
