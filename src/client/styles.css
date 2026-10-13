@@ -14,3 +14,27 @@
 .delete-recovery-fields{display:flex;gap:.75rem;align-items:end;flex-wrap:wrap;width:100%;padding:.75rem 0;border-top:1px solid var(--line)}.delete-recovery-fields p{flex-basis:100%;margin:0;color:var(--muted);font-size:.9rem}.delete-recovery-fields label{display:grid;gap:.35rem;min-width:min(14rem,100%)}
 .room-closed-thanks{padding:1rem 1.25rem;border-radius:1rem;background:var(--warm);color:var(--text)}.room-closed-thanks a{font-weight:700;color:var(--accent)}
 .room-readonly{padding:.75rem 1rem;border-radius:.75rem;background:var(--panel);border:1px solid var(--line);font-weight:700}
+:root{--panel:var(--surface);--line:var(--border)}
+.room-flow{margin:1.4rem 0;padding:clamp(1rem,2vw,1.5rem);border:1px solid var(--border);border-radius:24px;background:linear-gradient(135deg,var(--surface),var(--warm));}
+.room-flow-heading{display:flex;justify-content:space-between;align-items:end;gap:1rem;margin-bottom:1rem}
+.room-flow-heading h2{font:700 clamp(1.4rem,3vw,2rem)/1.1 Georgia,serif;letter-spacing:-.025em;margin-top:.3rem}
+.room-flow-heading>p{max-width:19rem;color:var(--muted);font-size:.92rem}
+.room-flow-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem;padding:0;margin:0;list-style:none}
+.room-flow-step{display:grid;grid-template-columns:2.4rem 1fr;align-content:start;gap:.75rem;padding:1rem;border:1px solid var(--border);border-radius:18px;background:var(--surface);min-width:0}
+.room-flow-number{display:grid;place-items:center;width:2.4rem;height:2.4rem;border-radius:50%;background:var(--warm);color:var(--accent);font-size:.8rem;font-weight:850;letter-spacing:.04em}
+.room-flow-step.is-underway .room-flow-number{background:var(--accent);color:var(--accent-contrast)}
+.room-flow-step h3{font-size:1rem;line-height:1.25;margin:.1rem 0 .45rem}
+.room-flow-step p{color:var(--muted);font-size:.88rem;line-height:1.5}
+.room-flow-count{display:inline-flex;margin-top:.75rem;padding:.3rem .6rem;border-radius:999px;background:var(--warm);color:var(--text);font-size:.78rem;font-weight:750}
+@media(max-width:800px){.room-flow-steps{grid-template-columns:1fr}.room-flow-step{grid-template-columns:2.4rem 1fr}.room-flow-heading{align-items:start;flex-direction:column}.room-flow-heading>p{max-width:38rem}}
+.landing{max-width:1100px;grid-template-columns:minmax(0,1.05fr) minmax(18rem,.95fr);grid-template-areas:"eyebrow eyebrow" "title code" "lede code" "how create" "error error";align-items:start;padding-top:clamp(5rem,10vh,7rem)}
+.landing>.eyebrow{grid-area:eyebrow}
+.landing>h1{grid-area:title;font-size:clamp(3rem,6.5vw,5.8rem)}
+.landing>.lede{grid-area:lede}
+.landing>.how-it-works{grid-area:how;align-self:stretch;display:grid;align-content:center;box-shadow:0 14px 38px rgba(38,45,39,.045)}
+.landing>.meeting-code-form{grid-area:code;align-self:end;margin:0;box-shadow:0 14px 38px rgba(38,45,39,.045)}
+.landing>.create-form{grid-area:create;max-width:none;margin:0;padding:1.15rem 1.2rem;border:1px solid var(--border);border-radius:20px;background:var(--surface);box-shadow:0 14px 38px rgba(38,45,39,.055)}
+.landing>.error{grid-area:error}
+button{transition:transform .16s ease,filter .16s ease}
+button:not(:disabled):hover{filter:brightness(1.06);transform:translateY(-1px)}
+@media(max-width:800px){.landing{grid-template-columns:minmax(0,1fr);grid-template-areas:"eyebrow" "title" "lede" "how" "code" "create" "error";padding-top:6rem}.landing>.how-it-works{align-content:start}.landing>.meeting-code-form{align-self:stretch}}
