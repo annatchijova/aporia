@@ -21,6 +21,7 @@ The result disclosed whether the guessed address was registered to that room whe
 - Added a dedicated native Worker Rate Limiting binding for `POST /api/rooms/:id/creator-access`: 5 requests per 60 seconds per `cf-connecting-ip`, using the existing fail-closed limiter path. Both registered and unregistered addresses pass through the same edge cap.
 - Email delivery/configuration failures now log a generic server-side message and return `{"sent":true}` with HTTP 200, matching the unknown-address response. This prevents the delivery failure from distinguishing account existence.
 - Checked the route variants independently with an alternating sequence of known and unknown synthetic addresses. Requests 1–5 returned HTTP 200 with `{"sent":true}`; request 6 returned HTTP 429 and `Retry-After: 60`.
+- Sent eight mixed known/unknown address requests concurrently from one synthetic IP in a separate local window. Exactly five returned HTTP 200 with `{"sent":true}` and three returned HTTP 429. This exercises the local limiter's concurrent boundary; it does not override Cloudflare's documented eventual-consistency limitation in production.
 - Invalid address syntax remains rejected with HTTP 400 by request validation; that behavior is independent of account existence. Missing room and unregistered account responses remain generic success-shaped responses.
 - The failed-delivery path created zero auth tokens before and after the change because local Resend configuration is absent. No email was sent.
 
@@ -36,7 +37,7 @@ With a local Wrangler server on port 8791, a synthetic account/room fixture, and
 node --input-type=module -e 'for (let i=1;i<=6;i++){const email=i%2?"wrong@example.invalid":"r6-owner@example.invalid";const r=await fetch("http://127.0.0.1:8791/api/rooms/r6-fixture-room/creator-access",{method:"POST",headers:{"content-type":"application/json","cf-connecting-ip":"198.51.100.77"},body:JSON.stringify({email})});console.log(i,r.status,r.headers.get("retry-after"),await r.text())}'
 ```
 
-Observed output was five `200 null {"sent":true}` responses followed by `429 60 {"error":"too many requests; try again shortly"}`. The synthetic room and account were deleted afterward; a local D1 query verified both counts were zero. Wrangler was stopped.
+Observed output was five `200 null {"sent":true}` responses followed by `429 60 {"error":"too many requests; try again shortly"}`. The synthetic rooms and accounts used in the sequential, timing, and concurrent probes were deleted afterward; local D1 queries verified their counts were zero. Wrangler was stopped.
 
 ## Limits and status
 
