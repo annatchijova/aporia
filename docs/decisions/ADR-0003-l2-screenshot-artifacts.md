@@ -1,8 +1,10 @@
 # ADR-0003 — L2: screenshots como artifacts multimodales acotados
 
 **Fecha:** 2026-09-25  
-**Estado:** aceptada para L2  
+**Estado:** supersedida por la aclaración del PRD del 2026-10-12
 **Nivel:** Evidencia heterogénea
+
+> **Nota de vigencia:** este ADR conserva el razonamiento histórico de la primera implementación, pero ya no describe la política vigente. La aclaración posterior requiere descartar la imagen original después del procesamiento. El Worker ahora persiste un artifact de imagen redactado y conserva la propuesta extraída para revisión; ver [PRD](../../devpost/prd.md), [Round 2](../red-team/ROUND-2-STATE-PRIVACY.md) y [mapa de datos](../red-team/ROUND-9-SCREENSHOT-DATA-FLOW.md). La retención de `sourceText` extraído sigue pendiente de una decisión explícita.
 
 ## Decisión
 

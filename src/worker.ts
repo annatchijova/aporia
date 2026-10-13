@@ -49,21 +49,25 @@ async function tokenHash(token: string): Promise<string> { return sha256(token);
 
 function randomToken(): string { return `${crypto.randomUUID()}${crypto.randomUUID()}`; }
 
-async function sendCreatorLink(env: Env, email: string, roomId: string, purpose: 'login' | 'recover', origin: string): Promise<void> {
+export async function sendCreatorLink(env: Env, email: string, roomId: string, purpose: 'login' | 'recover', origin: string): Promise<void> {
   if (!env.RESEND_API_KEY || !env.CREATOR_EMAIL_FROM || !env.APORIA_APP_ORIGIN) throw new Error('creator email is not configured');
+  const configuredOrigin = new URL(origin);
+  if (configuredOrigin.protocol !== 'https:' && configuredOrigin.hostname !== 'localhost') throw new Error('creator app origin must use HTTPS');
   const raw = randomToken();
+  const hashedToken = await tokenHash(raw);
   const createdAt = now();
   const expiresAt = new Date(Date.now() + (purpose === 'recover' ? 7 : 0.5) * 24 * 60 * 60 * 1000).toISOString();
   await env.DB.prepare('INSERT INTO creator_auth_tokens (token_hash, email, room_id, purpose, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(await tokenHash(raw), email, roomId, purpose, createdAt, expiresAt).run();
-  const configuredOrigin = new URL(origin);
-  if (configuredOrigin.protocol !== 'https:' && configuredOrigin.hostname !== 'localhost') throw new Error('creator app origin must use HTTPS');
+    .bind(hashedToken, email, roomId, purpose, createdAt, expiresAt).run();
   const link = `${configuredOrigin.origin}/#creatorToken=${encodeURIComponent(raw)}&room=${encodeURIComponent(roomId)}`;
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST', headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
     body: JSON.stringify({ from: env.CREATOR_EMAIL_FROM, to: [email], subject: purpose === 'recover' ? 'Recover your APORIA room' : 'Manage your APORIA room', html: `<p>Use this one-time link to ${purpose === 'recover' ? 'recover' : 'manage'} your APORIA room:</p><p><a href="${link}">Continue to APORIA</a></p><p>This link expires in ${purpose === 'recover' ? '7 days' : '30 minutes'}.</p>` }),
   });
-  if (!response.ok) throw new Error('could not send creator email');
+  if (!response.ok) {
+    await env.DB.prepare('DELETE FROM creator_auth_tokens WHERE token_hash = ? AND used_at IS NULL').bind(hashedToken).run();
+    throw new Error('could not send creator email');
+  }
 }
 
 async function creatorAccount(request: Request, env: Env, roomId: string): Promise<{ accountId: string } | null> {
