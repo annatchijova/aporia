@@ -30,3 +30,7 @@ Started a local Worker with temporary synthetic `APORIA_ALLOWED_ORIGINS` values.
 - **CODE FACT:** API JSON responses use `Cache-Control: no-store`; a real browser/cache behavior was not exercised.
 
 No additional confirmed issue was established from the remaining code review. Round 2 remains open for a safe mocked-provider image induction, Gemini data-handling review, lifecycle concurrency, and end-to-end retention checks.
+
+## Follow-up — October 13, 2026
+
+The previously open mocked-provider image path was exercised through the actual Worker handler with fake D1 and a stubbed `GeminiProvider.extract`. The provider stub received the synthetic image bytes; the HTTP response and inserted `artifact_json` had empty content/hash and omitted MIME/size; the extracted `sourceText` remained in `claims_json` and the response. A second case returned a synthetic provider failure and verified that no proposal row was inserted. Both tests passed. This closes only the local mocked Worker-path gap; real Gemini handling, provider retention, and browser behavior remain unverified. See [Round 9](ROUND-9-SCREENSHOT-DATA-FLOW.md) and [`worker-image-proposal.test.ts`](../../src/worker-image-proposal.test.ts).
