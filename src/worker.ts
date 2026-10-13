@@ -612,7 +612,9 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
   const roomMatch = path.match(/^\/api\/rooms\/([^/]+)$/);
   if (request.method === 'GET' && roomMatch) {
     const row = await env.DB.prepare('SELECT snapshot_json as snapshot, meeting_code as meetingCode, status FROM rooms WHERE id = ? AND status != ?').bind(roomMatch[1], 'trashed').first<{ snapshot: string; meetingCode: string | null; status: string }>();
-    return row ? json({ snapshot: JSON.parse(row.snapshot) as DecisionSnapshot, meetingCode: row.meetingCode ?? '', status: row.status }) : json({ error: 'room not found' }, 404);
+    if (!row) return json({ error: 'room not found' }, 404);
+    if (row.status === 'recovered_read_only' && !await creatorAccount(request, env, roomMatch[1])) return json({ error: 'creator access required' }, 401);
+    return json({ snapshot: JSON.parse(row.snapshot) as DecisionSnapshot, meetingCode: row.meetingCode ?? '', status: row.status });
   }
   const messagesMatch = path.match(/^\/api\/rooms\/([^/]+)\/messages$/);
   if (request.method === 'GET' && messagesMatch) return listRoomMessages(env, request, messagesMatch[1]);
