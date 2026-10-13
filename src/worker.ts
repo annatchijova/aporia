@@ -18,6 +18,7 @@ interface Env {
   ROOM_LOOKUP_LIMITER: RateLimit;
   ROOM_CREATE_LIMITER: RateLimit;
   ROOM_JOIN_LIMITER: RateLimit;
+  CREATOR_ACCESS_LIMITER: RateLimit;
 }
 
 const jsonHeaders = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
@@ -122,20 +123,22 @@ function numberInput(value: unknown, field: string): number {
 
 function routePath(url: URL): string { return url.pathname.replace(/^\/[^/]+(?=\/api\/)/, ''); }
 
-// Keep anonymous discovery and identity creation behind the edge caps in ADR-0006.
+// Keep anonymous discovery, identity creation, and creator-link requests behind edge caps in ADR-0006.
 async function enforcePublicBurstLimit(request: Request, env: Env, url: URL): Promise<Response | null> {
   const path = routePath(url).replace(/\/$/, '');
   const method = request.method;
   const lookupPath = method === 'GET' && /^\/api\/rooms\/by-code\/\d+$/.test(path);
   const createPath = method === 'POST' && path === '/api/rooms';
   const joinPath = method === 'POST' && /^\/api\/rooms\/[^/]+\/participants$/.test(path);
-  if (!lookupPath && !createPath && !joinPath) return null;
+  const creatorAccessPath = method === 'POST' && /^\/api\/rooms\/[^/]+\/creator-access$/.test(path);
+  if (!lookupPath && !createPath && !joinPath && !creatorAccessPath) return null;
 
   const clientIp = request.headers.get('cf-connecting-ip') || 'unknown-client';
-  const limiter = lookupPath ? env.ROOM_LOOKUP_LIMITER : createPath ? env.ROOM_CREATE_LIMITER : env.ROOM_JOIN_LIMITER;
-  const retryAfter = createPath ? 60 : 10;
+  const limiter = lookupPath ? env.ROOM_LOOKUP_LIMITER : createPath ? env.ROOM_CREATE_LIMITER : joinPath ? env.ROOM_JOIN_LIMITER : env.CREATOR_ACCESS_LIMITER;
+  const route = lookupPath ? 'lookup' : createPath ? 'create' : joinPath ? 'join' : 'creator-access';
+  const retryAfter = lookupPath || joinPath ? 10 : 60;
   try {
-    const { success } = await limiter.limit({ key: `aporia:${lookupPath ? 'lookup' : createPath ? 'create' : 'join'}:${clientIp}` });
+    const { success } = await limiter.limit({ key: `aporia:${route}:${clientIp}` });
     if (success) return null;
     return new Response(JSON.stringify({ error: 'too many requests; try again shortly' }), {
       status: 429,
@@ -444,7 +447,7 @@ async function requestCreatorAccess(env: Env, request: Request, roomId: string):
   const recent = await env.DB.prepare('SELECT COUNT(*) as count FROM creator_auth_tokens WHERE room_id = ? AND created_at > ?').bind(roomId, new Date(Date.now() - 60_000).toISOString()).first<{ count: number }>();
   if ((recent?.count ?? 0) > 0) return json({ sent: true });
   try { await sendCreatorLink(env, email, roomId, 'login', env.APORIA_APP_ORIGIN!); }
-  catch { return json({ error: 'could not send verification email' }, 503); }
+  catch { console.error('creator access email delivery failed'); }
   return json({ sent: true });
 }
 

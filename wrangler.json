@@ -25,6 +25,11 @@
       "name": "ROOM_JOIN_LIMITER",
       "namespace_id": "89261003",
       "simple": { "limit": 60, "period": 10 }
+    },
+    {
+      "name": "CREATOR_ACCESS_LIMITER",
+      "namespace_id": "89261004",
+      "simple": { "limit": 5, "period": 60 }
     }
   ],
   "d1_databases": [

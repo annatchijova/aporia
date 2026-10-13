@@ -12,13 +12,14 @@ Date: 2026-10-12   Status: accepted   Reversibility: two-way (Worker code and Wr
 
 ## Decision
 
-Use native Worker Rate Limiting bindings keyed by Cloudflare's client-IP header for public room lookup, room creation, and participant joining:
+Use native Worker Rate Limiting bindings keyed by Cloudflare's client-IP header for public room lookup, room creation, participant joining, and creator email-link requests:
 
 - meeting-number lookup: 30 calls per 10 seconds per client IP;
 - room creation: 3 calls per 60 seconds per client IP;
 - room joining: 60 calls per 10 seconds per client IP.
+- creator access email-link request: 5 calls per 60 seconds per client IP, counting registered and unregistered email attempts alike.
 
-Return HTTP 429 with `Retry-After` when a cap is reached. If a limiter binding errors, fail closed with HTTP 503. Do not persist IP addresses in D1. These are burst caps, not monthly quotas or a global abuse-control system.
+Return HTTP 429 with `Retry-After` when a cap is reached. If a limiter binding errors, fail closed with HTTP 503. Do not persist IP addresses in D1. These are burst caps, not monthly quotas or a global abuse-control system. Creator-link delivery failures return the same generic success-shaped response used for unknown addresses so the route does not expose account existence through a delivery/configuration error.
 
 ## Alternatives rejected
 
@@ -34,9 +35,9 @@ The selected windows allow ordinary groups to enter while reducing low-effort bu
 
 ## Consequences
 
-Accepted now: traffic from a shared IP can receive 429 during a legitimate burst; the control is probabilistic and geographically partitioned, so it must not be used for billing, monthly quotas, or exact abuse accounting.
+Accepted now: traffic from a shared IP can receive 429 during a legitimate burst; the control is probabilistic and geographically partitioned, so it must not be used for billing, monthly quotas, or exact abuse accounting. The creator-access cap is a best-effort brake against repeated link requests; distributed callers can still exceed it, and suppressed delivery errors reduce direct diagnosis from the response.
 
-Deferred: provider-call quotas, total room/member quotas, distributed abuse detection, and production telemetry remain separate work. No room lookup, create, or join endpoint is advertised as globally protected.
+Deferred: provider-call quotas, total room/member quotas, distributed abuse detection, and production telemetry remain separate work. No room lookup, create, join, or creator-access endpoint is advertised as globally protected.
 
 ## Revisit trigger
 
@@ -44,4 +45,4 @@ Revisit before opening the shared backend to arbitrary public traffic, or sooner
 
 ## Anchored at
 
-`src/worker.ts` (`enforcePublicBurstLimit`) and `wrangler.json` (`ratelimits`).
+`src/worker.ts` (`enforcePublicBurstLimit`, `requestCreatorAccess`) and `wrangler.json` (`ratelimits`).
