@@ -178,3 +178,9 @@ This log records how the official Build With AI: Basics skills are used in this 
 - **Follow-up:** Code review found that an invalid app origin or explicit provider HTTP rejection could leave a one-time creator token in D1 after the send failed. Origin validation now precedes insert; an explicit non-2xx response removes the unused token. A thrown/ambiguous network failure keeps it because the provider may have accepted the email.
 - **Verification:** Reviewed current code and lifecycle SQL; the mocked Gemini image-boundary test passed 9/9. A Worker-route test with fake D1 and stubbed Gemini verified redacted response/storage, retained source text, and no proposal on provider failure (2/2). Three mocked email tests passed for provider rejection, invalid origin, and accepted delivery. No live provider/email or production/staging service was used.
 - **Open decision and limits:** Whether to erase extracted `sourceText` after review remains a product decision because it changes review/audit behavior. Gemini/provider retention, Cloudflare backups/logs, browser copies, and operator exports were not verifiable from this repository. See [Round 9 report](red-team/ROUND-9-SCREENSHOT-DATA-FLOW.md).
+
+## October 13, 2026 — full local verification checkpoint
+
+- **Used:** Personal `red-team-auditing` and `variant-analysis` to check the accumulated fixes together, after the focused probes for polling, creator-link cleanup, and image-proposal redaction.
+- **Verification:** `npm test` passed all 30 tests across 8 files. `npm run build` produced the Vite production bundle successfully. The focused `npm run typecheck` and `git diff --check` checks had passed during the preceding fixes.
+- **Limits:** This is local code verification. It does not establish Cloudflare edge behavior, production provider behavior, browser-level behavior, deployment readiness, or closure of the still-open red-team rounds. No external services were contacted.
