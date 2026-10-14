@@ -14,7 +14,7 @@ A closed room's owner should be able to move it to trash after a recovery link i
 
 **CONFIRMED BY INDUCTION (Worker handlers with synthetic storage):** the actual Worker handlers returned HTTP 200 for delete and link consumption. The state moved `closed → trashed → recovered_read_only`. The delete batch issued child-row deletions for messages, claim decisions, proposals, candidate proposals, candidates, events, participant sessions, participants, and login tokens. While trashed, the old room GET returned 404.
 
-The mock email provider captured one recovery link. Recovery produced a new snapshot with no participants, facts, constraints, or preferences; it retained one candidate with its area removed and a summary with two registered people. The original event title, synthetic attendee names, private note, and precise location were absent. Anonymous GET of the recovered room returned 401; GET with the returned creator session returned 200. Replaying the same recovery token returned 400. The mock provider was called once.
+The mock email provider captured one recovery link. Recovery produced a new snapshot with no participants, facts, constraints, or preferences; it retained one candidate with its area removed and a summary with two registered people. The original event title, synthetic attendee names, private note, and precise location were absent. Anonymous GET of the recovered room returned 401; GET with the returned creator session returned 200. An old meeting number returned 404. Public chat GET returned an empty list, and an old participant session could not post (401). Replaying the same recovery token returned 400. The mock provider was called once.
 
 ## Variant analysis
 
@@ -28,6 +28,9 @@ Invariant: **recovery restores only the limited data approved for recovery, and 
 | Verify personal and location data in recovered snapshot | Original title, names, fact text, and candidate area absent |
 | Read recovered room without creator session | HTTP 401 |
 | Read recovered room with returned creator session | HTTP 200 |
+| Look up the old meeting number after deletion | HTTP 404 |
+| Read chat through the old room UUID | HTTP 200 with an empty list |
+| Post using an old participant session after recovery | HTTP 401; the synthetic session row was removed |
 | Replay the recovery token | HTTP 400; no second provider request |
 | Explicit provider rejection | Not repeated here; existing `creator-link.test.ts` covers token cleanup on non-2xx response |
 | Expired recovery period/token, simultaneous token replay, and transaction rollback | Not exercised |

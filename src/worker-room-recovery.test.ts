@@ -5,6 +5,7 @@ import worker from './worker';
 const roomId = 'room-r10-lifecycle';
 const accountId = 'account-r10-owner';
 const creatorToken = 'synthetic-r10-creator-session-token';
+const oldParticipantToken = 'synthetic-r10-old-participant-session-token';
 const ownerEmail = 'r10-owner@example.test';
 
 type Statement = { sql: string; values: unknown[] };
@@ -14,7 +15,7 @@ async function digest(value: string): Promise<string> {
   return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function syntheticDb() {
+async function syntheticDb() {
   const snapshot = emptySnapshot(roomId, 'Sensitive event title');
   snapshot.revision = 7;
   snapshot.participants.push(
@@ -43,6 +44,7 @@ function syntheticDb() {
     proposals: 1,
     authTokens: new Map<string, { email: string; roomId: string; purpose: string; expiresAt: string; usedAt: string | null }>(),
     creatorSessions: new Map<string, string>(),
+    sessions: new Map<string, string>([[await digest(oldParticipantToken), 'participant-r10-one']]),
     deletedChildren: new Set<string>(),
   };
 
@@ -61,6 +63,7 @@ function syntheticDb() {
       state.deletedChildren.add(sql.slice('DELETE FROM '.length).split(' ', 1)[0]);
       if (sql.startsWith('DELETE FROM room_messages')) state.messages = 0;
       if (sql.startsWith('DELETE FROM proposals')) state.proposals = 0;
+      if (sql.startsWith('DELETE FROM sessions')) state.sessions.clear();
       return { meta: { changes: 1 } };
     }
     if (sql.startsWith("UPDATE rooms SET title = ?, snapshot_json = ?, revision = 1")) {
@@ -109,6 +112,15 @@ function syntheticDb() {
               }
               if (sql === 'SELECT id FROM creator_accounts WHERE email = ?') return values[0] === ownerEmail ? { id: accountId } as T : null;
               if (sql.startsWith('SELECT creator_account_id as accountId FROM rooms')) return { accountId: state.room.creatorAccountId } as T;
+              if (sql.startsWith('SELECT participant_id as participantId FROM sessions WHERE token_hash')) {
+                return state.sessions.get(String(values[0])) && String(values[1]) === roomId ? { participantId: state.sessions.get(String(values[0])) } as T : null;
+              }
+              if (sql.startsWith('SELECT id FROM rooms WHERE id = ? AND status != ?')) {
+                return state.room.status !== values[1] ? { id: roomId } as T : null;
+              }
+              if (sql.startsWith('SELECT id, snapshot_json as snapshot, status FROM rooms WHERE meeting_code')) {
+                return state.room.meetingCode === values[0] ? { id: roomId, snapshot: state.room.snapshot, status: state.room.status } as T : null;
+              }
               if (sql.startsWith('SELECT snapshot_json as snapshot, meeting_code as meetingCode, status FROM rooms')) {
                 return state.room.status !== 'trashed' ? { snapshot: state.room.snapshot, meetingCode: state.room.meetingCode, status: state.room.status } as T : null;
               }
@@ -139,7 +151,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('Worker room recovery lifecycle', () => {
   it('trashes a closed room, recovers once from the emailed link, and restores only the allowed snapshot', async () => {
-    const { db, state } = syntheticDb();
+    const { db, state } = await syntheticDb();
     const emailFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const email = JSON.parse(String(init?.body)) as { html: string };
       const link = email.html.match(/href="([^"]+)"/)?.[1];
@@ -162,6 +174,7 @@ describe('Worker room recovery lifecycle', () => {
     expect(state.room.meetingCode).toBeNull();
     expect(state.messages).toBe(0);
     expect(state.proposals).toBe(0);
+    expect(state.sessions.size).toBe(0);
     expect(state.deletedChildren).toEqual(new Set([
       'room_messages', 'proposal_claim_decisions', 'proposals', 'candidate_proposals',
       'candidates', 'events', 'sessions', 'participants', 'creator_auth_tokens',
@@ -176,6 +189,8 @@ describe('Worker room recovery lifecycle', () => {
 
     const oldRoomResponse = await worker.fetch(new Request(`https://aporia.test/api/rooms/${roomId}`), env);
     expect(oldRoomResponse.status).toBe(404);
+    const oldMeetingNumber = await worker.fetch(new Request('https://aporia.test/api/rooms/by-code/12345678'), env);
+    expect(oldMeetingNumber.status).toBe(404);
 
     const recoveryResponse = await worker.fetch(jsonRequest('/api/creator-links/consume', { token: decodeURIComponent(token!) }), env);
     const recoveryBody = await recoveryResponse.json() as { roomId?: string; recovered?: boolean; creatorToken?: string };
@@ -198,6 +213,11 @@ describe('Worker room recovery lifecycle', () => {
 
     const anonymousRead = await worker.fetch(new Request(`https://aporia.test/api/rooms/${roomId}`), env);
     expect(anonymousRead.status).toBe(401);
+    const oldChatRead = await worker.fetch(new Request(`https://aporia.test/api/rooms/${roomId}/messages`), env);
+    expect(oldChatRead.status).toBe(200);
+    expect(await oldChatRead.json()).toMatchObject({ messages: [], participantMessageCount: null });
+    const staleSessionPost = await worker.fetch(jsonRequest(`/api/rooms/${roomId}/messages`, { message: 'synthetic stale write', idempotencyKey: 'r10-stale-session' }, { 'x-aporia-session': oldParticipantToken }), env);
+    expect(staleSessionPost.status).toBe(401);
     const ownerRead = await worker.fetch(new Request(`https://aporia.test/api/rooms/${roomId}`, { headers: { 'x-aporia-creator': recoveryBody.creatorToken! } }), env);
     expect(ownerRead.status).toBe(200);
     const replay = await worker.fetch(jsonRequest('/api/creator-links/consume', { token: decodeURIComponent(token!) }), env);
