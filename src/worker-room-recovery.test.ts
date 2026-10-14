@@ -147,6 +147,28 @@ function jsonRequest(path: string, body: unknown, headers: Record<string, string
   });
 }
 
+async function trashedRoomFixture() {
+  const { db, state } = await syntheticDb();
+  const emailFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const email = JSON.parse(String(init?.body)) as { html: string };
+    return new Response(JSON.stringify({ id: 'synthetic-email-id', html: email.html }), { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+  vi.stubGlobal('fetch', emailFetch);
+  const env = {
+    DB: db, ASSETS: { fetch: async () => new Response(null, { status: 404 }) },
+    RESEND_API_KEY: 'synthetic-only', CREATOR_EMAIL_FROM: 'no-reply@example.test', APORIA_APP_ORIGIN: 'https://aporia.test',
+    ROOM_LOOKUP_LIMITER: { limit: async () => ({ success: true }) }, ROOM_CREATE_LIMITER: { limit: async () => ({ success: true }) },
+    ROOM_JOIN_LIMITER: { limit: async () => ({ success: true }) }, CREATOR_ACCESS_LIMITER: { limit: async () => ({ success: true }) },
+  } as unknown as Parameters<typeof worker.fetch>[1];
+  const deleted = await worker.fetch(jsonRequest(`/api/rooms/${roomId}/delete`, {}, { 'x-aporia-creator': creatorToken }), env);
+  expect(deleted.status).toBe(200);
+  const emailBody = JSON.parse(String(emailFetch.mock.calls[0]?.[1]?.body)) as { html: string };
+  const link = emailBody.html.match(/href="([^"]+)"/)?.[1];
+  const token = new URL(link!).hash.slice(1).split('&').find((value) => value.startsWith('creatorToken='))?.split('=').slice(1).join('=');
+  expect(token).toBeTruthy();
+  return { env, state, emailFetch, token: decodeURIComponent(token!) };
+}
+
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('Worker room recovery lifecycle', () => {
@@ -222,6 +244,34 @@ describe('Worker room recovery lifecycle', () => {
     expect(ownerRead.status).toBe(200);
     const replay = await worker.fetch(jsonRequest('/api/creator-links/consume', { token: decodeURIComponent(token!) }), env);
     expect(replay.status).toBe(400);
+    expect(emailFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an expired recovery email token without changing the trashed room', async () => {
+    const { env, state, emailFetch, token } = await trashedRoomFixture();
+    const storedToken = state.authTokens.get(await digest(token));
+    expect(storedToken).toBeTruthy();
+    storedToken!.expiresAt = new Date(Date.now() - 1_000).toISOString();
+
+    const response = await worker.fetch(jsonRequest('/api/creator-links/consume', { token }), env);
+
+    expect(response.status).toBe(400);
+    expect(state.room.status).toBe('trashed');
+    expect(state.room.recovery).toBeTruthy();
+    expect(state.creatorSessions.size).toBe(0);
+    expect(emailFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a recovery link after the seven-day trash window without restoring the room', async () => {
+    const { env, state, emailFetch, token } = await trashedRoomFixture();
+    state.room.recoveryUntil = new Date(Date.now() - 1_000).toISOString();
+
+    const response = await worker.fetch(jsonRequest('/api/creator-links/consume', { token }), env);
+
+    expect(response.status).toBe(410);
+    expect(state.room.status).toBe('trashed');
+    expect(state.room.recovery).toBeTruthy();
+    expect(state.creatorSessions.size).toBe(0);
     expect(emailFetch).toHaveBeenCalledTimes(1);
   });
 });
