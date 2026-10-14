@@ -239,3 +239,9 @@ This log records how the official Build With AI: Basics skills are used in this 
 - **Used:** Personal `cloud-architecture-selection` and `decision-record-discipline` to document the hosting boundary the user chose and distinguish repository evidence from deployment work still pending.
 - **Decision:** The new frontend is intended for Vercel; the existing API, D1, schedules, and provider secrets stay on Cloudflare Workers. The previous Webflow beta remains separate. `VITE_APORIA_API_ORIGIN` and the Worker CORS allowlist already support this split in code.
 - **Limit:** No Vercel project, production origin, build environment, secrets, price, or deployment was checked or configured. The record is [ADR-0007](decisions/ADR-0007-vercel-frontend-cloudflare-api.md); deployment checks remain future work.
+
+## October 14, 2026 — creator login replay race
+
+- **Used:** Personal `concurrency-reasoning` and `red-team-auditing` to test the sibling login-token flow after fixing recovery-link session creation.
+- **Induction:** Thirty-two simultaneous uses of the same synthetic login token against the actual local Worker/D1 produced one 200 and 31 409 responses. D1 held one consumed token, one creator account, one room ownership link, and one creator session.
+- **Disposition:** The same-token race was falsified for this local configuration; no production code changed. Two distinct live login links, deletion races, exact expiry, and deployed behavior remain unchecked. See [Round 14](red-team/ROUND-14-CREATOR-LOGIN-RACE.md) and its [synthetic fixture](red-team/fixtures/ROUND-14-CREATOR-LOGIN-RACE.sql).
