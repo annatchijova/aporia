@@ -204,3 +204,10 @@ This log records how the official Build With AI: Basics skills are used in this 
 - **Used:** Personal `git-discipline` to verify the live repository state and create a restore tag before continuing; personal `red-team-auditing` to keep the evidence level below induction when the local harness did not start.
 - **Attempt:** Prepared an isolated Miniflare worker with a synthetic outbound email response and a temporary D1 path. The installed Miniflare 5 package rejected the legacy Worker options shape before startup. No Worker request, database migration, provider call, or repository code change occurred.
 - **Disposition:** This was setup exploration, not a security finding or a completed red-team round. Round 10 remains limited to its synthetic D1 adapter; real D1 delete/recovery atomicity and concurrency stay open. The next attempt must use a configuration shape supported by the installed Wrangler/Miniflare version and keep the D1 state isolated from the project's normal local database.
+
+## October 14, 2026 — recovery expiry variants
+
+- **Used:** Personal `red-team-auditing` and `variant-analysis` to extend the recovery invariant to token expiry and the seven-day trash window; personal `falsifiable-testing` to prove both tests detect removal of the corresponding expiry checks.
+- **Change:** Added two Worker-handler cases with a synthetic storage adapter. No production code changed.
+- **Evidence:** The expired link returned 400 and the expired trash window returned 410; both left the room trashed, preserved recovery data, and created no creator session. Removing either expiry check temporarily made its test fail with HTTP 200; both mutations were reverted before the green run. The full suite passed 33 tests across 9 files and `npm run build` passed.
+- **Limit:** Synthetic storage cannot validate D1 transaction behavior or expiry equality at the exact clock boundary. See [Round 10 follow-up](red-team/ROUND-10-RECOVERY-JOURNEY.md).

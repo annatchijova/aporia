@@ -37,6 +37,18 @@ Invariant: **recovery restores only the limited data approved for recovery, and 
 
 ## Limits and next work
 
-The test is a Worker-handler integration with a synthetic D1 adapter, not a local SQLite/D1 induction. Its adapter records the statements but cannot prove that Cloudflare D1's batch transaction, foreign keys, or concurrent conditional updates behave as assumed. Email link delivery, expiry boundaries, simultaneous replay, purge ordering, and browser hash-link handling remain open. No production code change was justified by this round.
+The test is a Worker-handler integration with a synthetic D1 adapter, not a local SQLite/D1 induction. Its adapter records the statements but cannot prove that Cloudflare D1's batch transaction, foreign keys, or concurrent conditional updates behave as assumed. Email link delivery, simultaneous replay, purge ordering, and browser hash-link handling remain open. No production code change was justified by this round.
 
 Reproduction: `npm test -- src/worker-room-recovery.test.ts`. See [the test harness](../../src/worker-room-recovery.test.ts) and [Round 7](ROUND-7-INTEGRATED-PUBLIC-FLOW.md) for the earlier local Wrangler+D1 flow, where deletion correctly failed closed because email was unavailable.
+
+## October 14 follow-up — expiry variants
+
+**Code revision:** `818c51b` (`test: cover expired room recovery links`). The test-only changes were run and committed at this revision; production Worker logic is unchanged.
+
+**Prediction:** A validly formatted recovery token whose own expiry is in the past returns HTTP 400. A token still within its own lifetime, but used after the room's seven-day recovery period, returns HTTP 410. Neither request restores the room, consumes the recovery data, nor creates a creator session.
+
+**Observed:** Both predictions held through the actual Worker handler using the synthetic storage adapter. The room stayed `trashed`, recovery data remained present, no creator session appeared, and the mocked provider had only been called once during deletion.
+
+**Negative controls:** Temporarily removing the token-expiry comparison made the expired-token test fail (handler returned 200 instead of 400). Temporarily removing the recovery-window comparison made the expired-window test fail (200 instead of 410). Both source mutations were immediately reverted; the focused cases and the full suite then passed.
+
+**Verification and boundary:** `npm test` passed 33 tests across 9 files; `npm run build` passed TypeScript checking and Vite bundling. These checks demonstrate handler behavior under synthetic storage only. They do not establish D1 transaction semantics, exact expiry-boundary behavior, concurrent recovery, scheduled purge ordering, email delivery, browser behavior, or deployed behavior.
