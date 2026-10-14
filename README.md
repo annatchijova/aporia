@@ -63,6 +63,8 @@ The creator can close a room read-only, then move it to trash. Reopening it read
 
 A separately hosted frontend needs its exact origin enabled by the backend operator. For Vercel deployments, the operator can optionally allow `https://*.vercel.app`; that broadens browser access to any HTTPS Vercel-hosted frontend and does not authenticate API callers. Apache-2.0 lets anyone clone and self-host APORIA, with their own backend, database, and credentials; it does not grant access to APORIA's shared backend or Gemini key.
 
+The new version's deployment direction is a Vercel-hosted frontend with the existing Cloudflare Worker/D1 API. The previous Webflow beta remains separate. This deployment has not yet been configured or verified; see [ADR-0007](docs/decisions/ADR-0007-vercel-frontend-cloudflare-api.md).
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).

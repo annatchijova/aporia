@@ -225,3 +225,17 @@ This log records how the official Build With AI: Basics skills are used in this 
 - **Induction:** Seeded two synthetic rooms and token hashes into the isolated local D1. The actual Worker returned 400 for an expired token and 410 for an unexpired token whose room's recovery deadline had passed. Follow-up SQL confirmed both rooms stayed trashed, their tokens remained unused, recovery snapshots remained, and no creator session was inserted.
 - **Why:** Round 10's tests covered these branches with synthetic storage; this checks the D1 reads and writes on the real local Worker path without sending email.
 - **Limit:** No exact timestamp equality, concurrent token redemption, real provider, or production environment was used. See [Round 12](red-team/ROUND-12-RECOVERY-EXPIRY-D1.md).
+
+## October 14, 2026 — recovery redemption race
+
+- **Used:** Personal `concurrency-reasoning`, `audit-before-patch`, and `red-team-auditing` to derive and reproduce the shared-state failure; personal `falsifiable-testing` and `variant-analysis` to add a red-first invariant test, run a negative control, and enumerate the adjacent creator-login path.
+- **Finding:** Against the pre-fix Worker, 32 simultaneous submissions of one synthetic recovery token returned one 200 and 31 409 responses, yet inserted 32 creator sessions in local Wrangler D1. Failed requests still met the old recovered-room-only `INSERT ... SELECT` predicate.
+- **Fix and induction:** Added `changes() = 1` to the session insertion predicate so the insert depends on the immediately preceding token-consumption update changing a row in that D1 batch. A fresh local Worker/D1 run yielded one 200, 31 409, and one additional session. The automated concurrent test failed before the fix (8 sessions), passed after it, and failed again when the guard was temporarily removed.
+- **Verification:** `npm test` passed 34 tests across 9 files; `npm run build` and `git diff --check` passed. No schema change, production database, email, or external provider was used. See [Round 13](red-team/ROUND-13-RECOVERY-REDEMPTION-RACE.md) and its [synthetic SQL fixture](red-team/fixtures/ROUND-13-RECOVERY-RACE.sql).
+- **Limit:** This verifies the installed local Wrangler/D1 execution path. Creator login-link concurrency, exact expiry equality, and Cloudflare production behavior remain open.
+
+## October 14, 2026 — deployment direction recorded
+
+- **Used:** Personal `cloud-architecture-selection` and `decision-record-discipline` to document the hosting boundary the user chose and distinguish repository evidence from deployment work still pending.
+- **Decision:** The new frontend is intended for Vercel; the existing API, D1, schedules, and provider secrets stay on Cloudflare Workers. The previous Webflow beta remains separate. `VITE_APORIA_API_ORIGIN` and the Worker CORS allowlist already support this split in code.
+- **Limit:** No Vercel project, production origin, build environment, secrets, price, or deployment was checked or configured. The record is [ADR-0007](decisions/ADR-0007-vercel-frontend-cloudflare-api.md); deployment checks remain future work.

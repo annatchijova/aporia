@@ -48,7 +48,7 @@ async function syntheticDb() {
     deletedChildren: new Set<string>(),
   };
 
-  const apply = async ({ sql, values }: Statement): Promise<{ meta: { changes: number } }> => {
+  const apply = async ({ sql, values }: Statement, previousChanges = 1): Promise<{ meta: { changes: number } }> => {
     if (sql.startsWith('INSERT INTO creator_auth_tokens')) {
       state.authTokens.set(String(values[0]), { email: String(values[1]), roomId: String(values[2]), purpose: String(values[3]), expiresAt: String(values[5]), usedAt: null });
       return { meta: { changes: 1 } };
@@ -81,12 +81,14 @@ async function syntheticDb() {
       return { meta: { changes: 1 } };
     }
     if (sql.startsWith('INSERT INTO creator_sessions')) {
+      if (sql.includes('changes() = 1') && previousChanges !== 1) return { meta: { changes: 0 } };
       state.creatorSessions.set(String(values[0]), String(values[1]));
       return { meta: { changes: 1 } };
     }
     return { meta: { changes: 1 } };
   };
 
+  let batchQueue = Promise.resolve();
   const db = {
     prepare(sql: string) {
       return {
@@ -133,9 +135,22 @@ async function syntheticDb() {
       };
     },
     async batch(statements: Array<{ sql: string; values: unknown[] }>) {
-      const results = [];
-      for (const statement of statements) results.push(await apply(statement));
-      return results;
+      const previous = batchQueue;
+      let release!: () => void;
+      batchQueue = new Promise<void>((resolve) => { release = resolve; });
+      await previous;
+      try {
+        const results = [];
+        let previousChanges = 1;
+        for (const statement of statements) {
+          const result = await apply(statement, previousChanges);
+          results.push(result);
+          previousChanges = result.meta.changes;
+        }
+        return results;
+      } finally {
+        release();
+      }
     },
   };
   return { db, state };
@@ -245,6 +260,21 @@ describe('Worker room recovery lifecycle', () => {
     const replay = await worker.fetch(jsonRequest('/api/creator-links/consume', { token: decodeURIComponent(token!) }), env);
     expect(replay.status).toBe(400);
     expect(emailFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates only one creator session when the same recovery link is consumed concurrently', async () => {
+    const { env, state, token } = await trashedRoomFixture();
+
+    const responses = await Promise.all(Array.from({ length: 8 }, () =>
+      worker.fetch(jsonRequest('/api/creator-links/consume', { token }), env),
+    ));
+    const statuses = await Promise.all(responses.map((response) => response.status));
+
+    expect(statuses.filter((status) => status === 200)).toHaveLength(1);
+    expect(statuses).toHaveLength(8);
+    expect(statuses.filter((status) => status !== 200).every((status) => [400, 409, 410].includes(status))).toBe(true);
+    expect(state.room.status).toBe('recovered_read_only');
+    expect(state.creatorSessions.size).toBe(1);
   });
 
   it('rejects an expired recovery email token without changing the trashed room', async () => {
