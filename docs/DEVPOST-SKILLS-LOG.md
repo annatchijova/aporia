@@ -245,3 +245,9 @@ This log records how the official Build With AI: Basics skills are used in this 
 - **Used:** Personal `concurrency-reasoning` and `red-team-auditing` to test the sibling login-token flow after fixing recovery-link session creation.
 - **Induction:** Thirty-two simultaneous uses of the same synthetic login token against the actual local Worker/D1 produced one 200 and 31 409 responses. D1 held one consumed token, one creator account, one room ownership link, and one creator session.
 - **Disposition:** The same-token race was falsified for this local configuration; no production code changed. Two distinct live login links, deletion races, exact expiry, and deployed behavior remain unchecked. See [Round 14](red-team/ROUND-14-CREATOR-LOGIN-RACE.md) and its [synthetic fixture](red-team/fixtures/ROUND-14-CREATOR-LOGIN-RACE.sql).
+
+## October 14, 2026 — concurrent distinct creator links
+
+- **Used:** Personal `concurrency-reasoning` and `red-team-auditing` to extend the single-token replay check to separate valid credentials for one creator.
+- **Induction:** Two concurrently redeemed synthetic login links both returned 200. Local D1 contained one creator account, two consumed tokens, one room ownership link, and two creator sessions.
+- **Disposition:** The current schema permits multiple sessions and each token was independently valid and single-use, so no defect was confirmed. Whether the product should allow multiple active sessions remains a product-policy question; no code changed. See [Round 15](red-team/ROUND-15-DISTINCT-CREATOR-LOGIN-LINKS.md) and its [fixture](red-team/fixtures/ROUND-15-DISTINCT-CREATOR-LOGIN-LINKS.sql).

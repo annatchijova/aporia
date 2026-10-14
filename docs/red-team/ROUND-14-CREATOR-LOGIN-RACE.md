@@ -31,4 +31,4 @@ Expected counts: one 200, 31 conflicts, one account, and one session. D1 generat
 
 ## Limits and next variants
 
-This checks repeated use of one token in the installed local Wrangler/D1 path. It does not test two separately issued, still-valid login links for the same room, concurrent room deletion, expiry equality, or Cloudflare's deployed Worker. Those remain separate candidates; no result here establishes their behavior.
+This checks repeated use of one token in the installed local Wrangler/D1 path. Two separately issued, still-valid login links for the same room are covered in [Round 15](ROUND-15-DISTINCT-CREATOR-LOGIN-LINKS.md). Concurrent room deletion, expiry equality, and Cloudflare's deployed Worker remain separate candidates; no result here establishes their behavior.
