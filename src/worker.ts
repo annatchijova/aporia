@@ -592,9 +592,18 @@ async function purgeExpiredRooms(env: Env): Promise<void> {
   ]);
   const expired = await env.DB.prepare("SELECT id FROM rooms WHERE status = 'trashed' AND recovery_until <= ? LIMIT 100").bind(now()).all<{ id: string }>();
   for (const { id } of expired.results ?? []) {
+    const expiredAt = now();
     await env.DB.batch([
-      env.DB.prepare('DELETE FROM creator_auth_tokens WHERE room_id = ?').bind(id),
-      env.DB.prepare('DELETE FROM rooms WHERE id = ? AND status = ? AND recovery_until <= ?').bind(id, 'trashed', now()),
+      env.DB.prepare("DELETE FROM room_messages WHERE room_id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'trashed' AND recovery_until <= ?)").bind(id, id, expiredAt),
+      env.DB.prepare("DELETE FROM proposal_claim_decisions WHERE proposal_id IN (SELECT id FROM proposals WHERE room_id = ?) AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'trashed' AND recovery_until <= ?)").bind(id, id, expiredAt),
+      env.DB.prepare("DELETE FROM proposals WHERE room_id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'trashed' AND recovery_until <= ?)").bind(id, id, expiredAt),
+      env.DB.prepare("DELETE FROM candidate_proposals WHERE room_id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'trashed' AND recovery_until <= ?)").bind(id, id, expiredAt),
+      env.DB.prepare("DELETE FROM candidates WHERE room_id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'trashed' AND recovery_until <= ?)").bind(id, id, expiredAt),
+      env.DB.prepare("DELETE FROM events WHERE room_id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'trashed' AND recovery_until <= ?)").bind(id, id, expiredAt),
+      env.DB.prepare("DELETE FROM sessions WHERE room_id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'trashed' AND recovery_until <= ?)").bind(id, id, expiredAt),
+      env.DB.prepare("DELETE FROM participants WHERE room_id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'trashed' AND recovery_until <= ?)").bind(id, id, expiredAt),
+      env.DB.prepare("DELETE FROM creator_auth_tokens WHERE room_id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'trashed' AND recovery_until <= ?)").bind(id, id, expiredAt),
+      env.DB.prepare("DELETE FROM rooms WHERE id = ? AND status = 'trashed' AND recovery_until <= ?").bind(id, expiredAt),
     ]);
   }
   const currentTime = now();
