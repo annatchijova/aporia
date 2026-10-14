@@ -277,6 +277,37 @@ describe('Worker room recovery lifecycle', () => {
     expect(state.creatorSessions.size).toBe(1);
   });
 
+  it('leaves a recovery link usable if it is opened before deletion commits', async () => {
+    const { db, state } = await syntheticDb();
+    const env = {
+      DB: db, ASSETS: { fetch: async () => new Response(null, { status: 404 }) },
+      RESEND_API_KEY: 'synthetic-only', CREATOR_EMAIL_FROM: 'no-reply@example.test', APORIA_APP_ORIGIN: 'https://aporia.test',
+      ROOM_LOOKUP_LIMITER: { limit: async () => ({ success: true }) }, ROOM_CREATE_LIMITER: { limit: async () => ({ success: true }) },
+      ROOM_JOIN_LIMITER: { limit: async () => ({ success: true }) }, CREATOR_ACCESS_LIMITER: { limit: async () => ({ success: true }) },
+    } as unknown as Parameters<typeof worker.fetch>[1];
+    let token = '';
+    let earlyStatus = 0;
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const email = JSON.parse(String(init?.body)) as { html: string };
+      const link = email.html.match(/href="([^"]+)"/)?.[1];
+      token = decodeURIComponent(new URL(link!).hash.slice(1).split('&').find((value) => value.startsWith('creatorToken='))!.split('=').slice(1).join('='));
+      const early = await worker.fetch(jsonRequest('/api/creator-links/consume', { token }), env);
+      earlyStatus = early.status;
+      return new Response(JSON.stringify({ id: 'synthetic-email-id' }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+
+    const deleted = await worker.fetch(jsonRequest(`/api/rooms/${roomId}/delete`, {}, { 'x-aporia-creator': creatorToken }), env);
+    expect(deleted.status).toBe(200);
+    expect(earlyStatus).toBe(410);
+    expect(state.room.status).toBe('trashed');
+    expect(state.authTokens.get(await digest(token))?.usedAt).toBeNull();
+
+    const retry = await worker.fetch(jsonRequest('/api/creator-links/consume', { token }), env);
+    expect(retry.status).toBe(200);
+    expect(state.room.status).toBe('recovered_read_only');
+    expect(state.creatorSessions.size).toBe(1);
+  });
+
   it('rejects an expired recovery email token without changing the trashed room', async () => {
     const { env, state, emailFetch, token } = await trashedRoomFixture();
     const storedToken = state.authTokens.get(await digest(token));
