@@ -59,6 +59,12 @@ async function syntheticDb() {
       state.room.meetingCode = null; state.room.deletedAt = String(values[2]); state.room.recoveryUntil = String(values[3]); state.room.recovery = String(values[4]);
       return { meta: { changes: 1 } };
     }
+    if (sql.startsWith('UPDATE creator_auth_tokens SET expires_at')) {
+      const token = state.authTokens.get(String(values[1]));
+      if (!token || token.usedAt || state.room.status !== 'trashed' || state.room.deletedAt !== values[4]) return { meta: { changes: 0 } };
+      token.expiresAt = String(values[0]);
+      return { meta: { changes: 1 } };
+    }
     if (sql.startsWith('DELETE FROM ')) {
       state.deletedChildren.add(sql.slice('DELETE FROM '.length).split(' ', 1)[0]);
       if (sql.startsWith('DELETE FROM room_messages')) state.messages = 0;
@@ -162,10 +168,11 @@ function jsonRequest(path: string, body: unknown, headers: Record<string, string
   });
 }
 
-async function trashedRoomFixture() {
+async function trashedRoomFixture(afterEmailAccepted?: () => void) {
   const { db, state } = await syntheticDb();
   const emailFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
     const email = JSON.parse(String(init?.body)) as { html: string };
+    afterEmailAccepted?.();
     return new Response(JSON.stringify({ id: 'synthetic-email-id', html: email.html }), { status: 200, headers: { 'content-type': 'application/json' } });
   });
   vi.stubGlobal('fetch', emailFetch);
@@ -223,6 +230,7 @@ describe('Worker room recovery lifecycle', () => {
     expect(emailedLink).toBeTruthy();
     const token = new URL(emailedLink!).hash.slice(1).split('&').find((value) => value.startsWith('creatorToken='))?.split('=').slice(1).join('=');
     expect(token).toBeTruthy();
+    expect(state.authTokens.get(await digest(decodeURIComponent(token!)))?.expiresAt).toBe(state.room.recoveryUntil);
 
     const oldRoomResponse = await worker.fetch(new Request(`https://aporia.test/api/rooms/${roomId}`), env);
     expect(oldRoomResponse.status).toBe(404);
@@ -321,6 +329,27 @@ describe('Worker room recovery lifecycle', () => {
     expect(state.room.recovery).toBeTruthy();
     expect(state.creatorSessions.size).toBe(0);
     expect(emailFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the recovery link valid for the full trash window when email delivery is delayed', async () => {
+    vi.useFakeTimers();
+    const sendStartedAt = new Date('2026-10-14T12:00:00.000Z');
+    vi.setSystemTime(sendStartedAt);
+    try {
+      const { env, state, token } = await trashedRoomFixture(() => {
+        vi.setSystemTime(new Date(sendStartedAt.getTime() + 8 * 24 * 60 * 60 * 1000));
+      });
+      const storedToken = state.authTokens.get(await digest(token));
+      expect(storedToken?.expiresAt).toBe(state.room.recoveryUntil);
+      expect(new Date(storedToken!.expiresAt).getTime()).toBeGreaterThan(Date.now());
+
+      const response = await worker.fetch(jsonRequest('/api/creator-links/consume', { token }), env);
+
+      expect(response.status).toBe(200);
+      expect(state.room.status).toBe('recovered_read_only');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('rejects a recovery link after the seven-day trash window without restoring the room', async () => {

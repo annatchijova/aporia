@@ -49,7 +49,7 @@ async function tokenHash(token: string): Promise<string> { return sha256(token);
 
 function randomToken(): string { return `${crypto.randomUUID()}${crypto.randomUUID()}`; }
 
-export async function sendCreatorLink(env: Env, email: string, roomId: string, purpose: 'login' | 'recover', origin: string): Promise<void> {
+export async function sendCreatorLink(env: Env, email: string, roomId: string, purpose: 'login' | 'recover', origin: string): Promise<string> {
   if (!env.RESEND_API_KEY || !env.CREATOR_EMAIL_FROM || !env.APORIA_APP_ORIGIN) throw new Error('creator email is not configured');
   const configuredOrigin = new URL(origin);
   if (configuredOrigin.protocol !== 'https:' && configuredOrigin.hostname !== 'localhost') throw new Error('creator app origin must use HTTPS');
@@ -68,6 +68,7 @@ export async function sendCreatorLink(env: Env, email: string, roomId: string, p
     await env.DB.prepare('DELETE FROM creator_auth_tokens WHERE token_hash = ? AND used_at IS NULL').bind(hashedToken).run();
     throw new Error('could not send creator email');
   }
+  return hashedToken;
 }
 
 async function creatorAccount(request: Request, env: Env, roomId: string): Promise<{ accountId: string } | null> {
@@ -563,7 +564,8 @@ async function changeRoomLifecycle(env: Env, request: Request, roomId: string, a
   if ((recoveryRequest?.count ?? 0) > 0) return json({ error: 'wait before requesting another recovery email' }, 429);
   const creator = await env.DB.prepare('SELECT email FROM creator_accounts WHERE id = ?').bind(actor.accountId).first<{ email: string }>();
   if (!creator) return json({ error: 'creator account not found' }, 403);
-  try { await sendCreatorLink(env, creator.email, roomId, 'recover', env.APORIA_APP_ORIGIN ?? ''); }
+  let recoveryTokenHash: string;
+  try { recoveryTokenHash = await sendCreatorLink(env, creator.email, roomId, 'recover', env.APORIA_APP_ORIGIN ?? ''); }
   catch { return json({ error: 'could not send recovery email; room was not deleted' }, 503); }
   const recovery = { title: 'Recovered room', candidates: snapshot.candidates.map((candidate) => ({ id: crypto.randomUUID(), title: candidate.title, weekday: candidate.weekday, startMinute: candidate.startMinute, endMinute: candidate.endMinute, priceCents: candidate.priceCents, currency: candidate.currency, area: null, source: { kind: 'manual' as const, ref: 'recovered' } })), nextMeetingCode, registeredCount, attendedCount };
   const deletedAt = now();
@@ -571,6 +573,8 @@ async function changeRoomLifecycle(env: Env, request: Request, roomId: string, a
   const trashed = await env.DB.batch([
     env.DB.prepare("UPDATE rooms SET title = ?, snapshot_json = ?, status = 'trashed', meeting_code = NULL, creator_participant_id = NULL, deleted_at = ?, recovery_until = ?, recovery_snapshot_json = json_set(?, '$.registeredCount', COALESCE(json_extract(rooms.snapshot_json, '$.recoverySummary.registeredCount'), (SELECT COUNT(*) FROM participants WHERE room_id = rooms.id)), '$.attendedCount', ?) WHERE id = ? AND creator_account_id = ? AND status IN ('closed', 'reopened_read_only') AND (? IS NULL OR ? <= COALESCE(json_extract(rooms.snapshot_json, '$.recoverySummary.registeredCount'), (SELECT COUNT(*) FROM participants WHERE room_id = rooms.id)))")
       .bind('Deleted room', JSON.stringify(emptySnapshot(roomId, 'Deleted room')), deletedAt, until, JSON.stringify(recovery), roomId, attendedCount, roomId, actor.accountId, attendedCount, attendedCount, roomId),
+    env.DB.prepare("UPDATE creator_auth_tokens SET expires_at = ? WHERE token_hash = ? AND room_id = ? AND purpose = 'recover' AND used_at IS NULL AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'trashed' AND deleted_at = ?)")
+      .bind(until, recoveryTokenHash, roomId, roomId, deletedAt),
     env.DB.prepare('DELETE FROM room_messages WHERE room_id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = ? AND deleted_at = ?)').bind(roomId, roomId, 'trashed', deletedAt),
     env.DB.prepare('DELETE FROM proposal_claim_decisions WHERE proposal_id IN (SELECT id FROM proposals WHERE room_id = ?) AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = ? AND deleted_at = ?)').bind(roomId, roomId, 'trashed', deletedAt),
     env.DB.prepare('DELETE FROM proposals WHERE room_id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = ? AND deleted_at = ?)').bind(roomId, roomId, 'trashed', deletedAt),
