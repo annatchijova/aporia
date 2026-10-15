@@ -65,6 +65,23 @@ async function syntheticDb() {
       token.expiresAt = String(values[0]);
       return { meta: { changes: 1 } };
     }
+    if (sql.startsWith('DELETE FROM creator_auth_tokens')) {
+      state.deletedChildren.add('creator_auth_tokens');
+      if (sql.includes('expires_at <= ?')) {
+        for (const [hash, token] of state.authTokens) if (token.expiresAt <= String(values[0])) state.authTokens.delete(hash);
+      } else if (sql.includes("purpose = 'login'")) {
+        for (const [hash, token] of state.authTokens) if (token.roomId === values[0] && token.purpose === 'login') state.authTokens.delete(hash);
+      } else if (sql.includes('WHERE room_id = ?')) {
+        for (const [hash, token] of state.authTokens) if (token.roomId === values[0]) state.authTokens.delete(hash);
+      }
+      return { meta: { changes: 1 } };
+    }
+    if (sql.startsWith("DELETE FROM rooms WHERE id = ? AND status = 'trashed'")) {
+      if (state.room.status !== 'trashed' || state.room.recoveryUntil! > String(values[1])) return { meta: { changes: 0 } };
+      state.room.status = 'purged';
+      state.deletedChildren.add('rooms');
+      return { meta: { changes: 1 } };
+    }
     if (sql.startsWith('DELETE FROM ')) {
       state.deletedChildren.add(sql.slice('DELETE FROM '.length).split(' ', 1)[0]);
       if (sql.startsWith('DELETE FROM room_messages')) state.messages = 0;
@@ -135,7 +152,12 @@ async function syntheticDb() {
               return null;
             },
             async run() { return apply(statement); },
-            async all<T>() { return { results: [] as T[] }; },
+            async all<T>() {
+              if (sql.startsWith("SELECT id FROM rooms WHERE status = 'trashed' AND recovery_until <= ?")) {
+                return { results: state.room.status === 'trashed' && state.room.recoveryUntil !== null && state.room.recoveryUntil <= String(values[0]) ? [{ id: roomId } as T] : [] };
+              }
+              return { results: [] as T[] };
+            },
           };
         },
       };
@@ -347,6 +369,32 @@ describe('Worker room recovery lifecycle', () => {
 
       expect(response.status).toBe(200);
       expect(state.room.status).toBe('recovered_read_only');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('expires recovery and purges the room at exact deadline equality', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-14T12:00:00.000Z'));
+    try {
+      const { env, state, token } = await trashedRoomFixture();
+      const tokenExpiry = state.authTokens.get(await digest(token))?.expiresAt;
+      expect(tokenExpiry).toBe(state.room.recoveryUntil);
+      vi.setSystemTime(new Date(state.room.recoveryUntil!));
+      const equalityAttempt = await worker.fetch(jsonRequest('/api/creator-links/consume', { token }), env);
+      expect(equalityAttempt.status).toBe(400);
+
+      const [response] = await Promise.all([
+        worker.fetch(jsonRequest('/api/creator-links/consume', { token }), env),
+        worker.scheduled({ cron: '0 * * * *', type: 'cron', scheduledTime: Date.now(), noRetry: () => {} } as ScheduledController, env),
+      ]);
+
+      expect(response.status).toBe(400);
+      expect(state.room.status).toBe('purged');
+      expect(state.authTokens.size).toBe(0);
+      expect(state.creatorSessions.size).toBe(0);
+      expect(state.deletedChildren).toContain('rooms');
     } finally {
       vi.useRealTimers();
     }
