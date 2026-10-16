@@ -300,6 +300,16 @@ async function createProposal(env: Env, request: Request, roomId: string): Promi
   }
 }
 
+async function listPendingProposals(env: Env, request: Request, roomId: string): Promise<Response> {
+  const blocked = await requireActive(env, roomId); if (blocked) return blocked;
+  const actor = await session(request, env, roomId);
+  if (!actor) return json({ error: 'valid room session required' }, 401);
+  const result = await env.DB.prepare(`SELECT id, artifact_json as artifact, claims_json as claims, provider_json as provider, status
+    FROM proposals WHERE room_id = ? AND status = 'pending' AND json_extract(artifact_json, '$.participantId') = ? ORDER BY created_at, id`).bind(roomId, actor.participantId).all<{ id: string; artifact: string; claims: string; provider: string; status: string }>();
+  const proposals = (result.results ?? []).map((row) => ({ id: row.id, artifact: JSON.parse(row.artifact), claims: JSON.parse(row.claims), provider: JSON.parse(row.provider), warnings: [], status: row.status }));
+  return json({ proposals });
+}
+
 async function confirmClaim(env: Env, request: Request, roomId: string, proposalId: string): Promise<Response> {
   const blocked = await requireActive(env, roomId); if (blocked) return blocked;
   const actor = await session(request, env, roomId);
@@ -659,6 +669,7 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
   const lifecycleMatch = path.match(/^\/api\/rooms\/([^/]+)\/(close|reopen|delete)$/);
   if (request.method === 'POST' && lifecycleMatch) return changeRoomLifecycle(env, request, lifecycleMatch[1], lifecycleMatch[2] as 'close' | 'reopen' | 'delete');
   const proposalMatch = path.match(/^\/api\/rooms\/([^/]+)\/proposals$/);
+  if (request.method === 'GET' && proposalMatch) return listPendingProposals(env, request, proposalMatch[1]);
   if (request.method === 'POST' && proposalMatch) return createProposal(env, request, proposalMatch[1]);
   const confirmMatch = path.match(/^\/api\/rooms\/([^/]+)\/proposals\/([^/]+)\/confirm$/);
   if (request.method === 'POST' && confirmMatch) return confirmClaim(env, request, confirmMatch[1], confirmMatch[2]);
