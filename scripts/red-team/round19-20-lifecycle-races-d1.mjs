@@ -19,7 +19,8 @@ const ddl = [
   `CREATE TABLE IF NOT EXISTS proposals (id TEXT PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id), artifact_json TEXT NOT NULL, claims_json TEXT NOT NULL, provider_json TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS candidates (id TEXT PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id), candidate_json TEXT NOT NULL, created_at TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS candidate_proposals (id TEXT PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id), base_revision INTEGER NOT NULL, idempotency_key TEXT NOT NULL, drafts_json TEXT NOT NULL, provider_json TEXT NOT NULL, warnings_json TEXT NOT NULL, status TEXT NOT NULL, accepted_event_id TEXT, created_at TEXT NOT NULL)`,
-  `CREATE TABLE IF NOT EXISTS room_messages (id TEXT PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id), participant_id TEXT NOT NULL REFERENCES participants(id), body TEXT NOT NULL, idempotency_key TEXT NOT NULL, created_at TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS room_messages (id TEXT PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id), participant_id TEXT NOT NULL REFERENCES participants(id), body TEXT NOT NULL, idempotency_key TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(room_id, participant_id, idempotency_key))`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS r23_room_messages_idempotency ON room_messages(room_id, participant_id, idempotency_key)`,
   `CREATE TABLE IF NOT EXISTS proposal_claim_decisions (proposal_id TEXT NOT NULL REFERENCES proposals(id), claim_id TEXT NOT NULL, decision TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (proposal_id, claim_id))`,
   `CREATE TABLE IF NOT EXISTS creator_accounts (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, google_subject TEXT UNIQUE, created_at TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS creator_auth_tokens (token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, room_id TEXT NOT NULL REFERENCES rooms(id), purpose TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, used_at TEXT)`,
@@ -322,4 +323,137 @@ it('allows two scheduled purges that selected the same expired room to overlap s
   expect(room).toBeNull();
   expect(children.map((result) => result.count)).toEqual(Array(10).fill(0));
   expect(await db.prepare('SELECT id FROM creator_accounts WHERE id = ?').bind(accountId).first()).toBeNull();
+});
+
+it('preserves lifecycle, access, and cleanup invariants across one public-to-recovery journey', async () => {
+  const db = proxy.env.DB;
+  const emailBodies = [];
+  vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
+    emailBodies.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ id: `synthetic-r24-email-${emailBodies.length}` }), { status: 200 });
+  }));
+  const allow = { limit: async () => ({ success: true }) };
+  const env = {
+    ...proxy.env, DB: db,
+    ASSETS: { fetch: async () => new Response(null, { status: 404 }) },
+    RESEND_API_KEY: 'synthetic-only', CREATOR_EMAIL_FROM: 'no-reply@example.test', APORIA_APP_ORIGIN: 'https://aporia.test',
+    ROOM_LOOKUP_LIMITER: allow, ROOM_CREATE_LIMITER: allow, ROOM_JOIN_LIMITER: allow, CREATOR_ACCESS_LIMITER: allow,
+  };
+  let created;
+  let account;
+  try {
+    const createResponse = await worker.fetch(new Request('https://aporia.test/api/rooms', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.24' },
+      body: JSON.stringify({ title: 'R24 synthetic gathering', displayName: 'R24 host' }),
+    }), env);
+    expect(createResponse.status).toBe(200);
+    created = await createResponse.json();
+    const roomPath = `/api/rooms/${created.roomId}`;
+
+    const lookup = await worker.fetch(new Request(`https://aporia.test/api/rooms/by-code/${created.meetingCode}`, { headers: { 'cf-connecting-ip': '192.0.2.24' } }), env);
+    expect(lookup.status).toBe(200);
+    expect((await lookup.json()).roomId).toBe(created.roomId);
+    const joinResponse = await worker.fetch(new Request(`https://aporia.test${roomPath}/participants`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.24' }, body: JSON.stringify({ displayName: 'R24 attendee' }),
+    }), env);
+    expect(joinResponse.status).toBe(200);
+    const attendee = await joinResponse.json();
+
+    for (const [sessionToken, message, key] of [[created.sessionToken, 'Host update', 'r24-host'], [attendee.sessionToken, 'Attendee update', 'r24-attendee']]) {
+      const response = await worker.fetch(new Request(`https://aporia.test${roomPath}/messages`, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': sessionToken },
+        body: JSON.stringify({ message, idempotencyKey: key }),
+      }), env);
+      expect(response.status, await response.clone().text()).toBe(201);
+    }
+    const accessRequest = await worker.fetch(new Request(`https://aporia.test${roomPath}/creator-access`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken, 'cf-connecting-ip': '192.0.2.24' },
+      body: JSON.stringify({ email: ownerEmail }),
+    }), env);
+    expect(accessRequest.status).toBe(200);
+    expect(emailBodies).toHaveLength(1);
+    const loginLink = emailBodies[0].html.match(/href="([^"]+)"/)[1];
+    const loginToken = new URL(loginLink).hash.slice(1).split('&').find((part) => part.startsWith('creatorToken=')).slice('creatorToken='.length);
+    const login = await worker.fetch(new Request('https://aporia.test/api/creator-links/consume', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: decodeURIComponent(loginToken) }),
+    }), env);
+    expect(login.status).toBe(200);
+    const creatorToken = (await login.json()).creatorToken;
+    account = await db.prepare('SELECT id FROM creator_accounts WHERE email = ?').bind(ownerEmail).first();
+
+    const close = await worker.fetch(new Request(`https://aporia.test${roomPath}/close`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creatorToken }, body: '{}',
+    }), env);
+    expect(close.status).toBe(200);
+    const reopen = await worker.fetch(new Request(`https://aporia.test${roomPath}/reopen`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creatorToken }, body: '{}',
+    }), env);
+    expect(reopen.status).toBe(200);
+    const afterReopen = await worker.fetch(new Request(`https://aporia.test${roomPath}`), env);
+    const reopenedBody = await afterReopen.json();
+    expect(afterReopen.status).toBe(200);
+    expect(reopenedBody.status).toBe('reopened_read_only');
+    expect(JSON.stringify(reopenedBody.snapshot)).not.toContain('R24 host');
+    expect(JSON.stringify(reopenedBody.snapshot)).not.toContain('R24 attendee');
+    const reopenedCodeLookup = await worker.fetch(new Request(`https://aporia.test/api/rooms/by-code/${created.meetingCode}`, { headers: { 'cf-connecting-ip': '192.0.2.24' } }), env);
+    expect(reopenedCodeLookup.status).toBe(200);
+    expect((await reopenedCodeLookup.json()).status).toBe('reopened_read_only');
+    const blockedRejoin = await worker.fetch(new Request(`https://aporia.test${roomPath}/participants`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.24' }, body: JSON.stringify({ displayName: 'R24 late attendee' }),
+    }), env);
+    expect(blockedRejoin.status).toBe(409);
+    const messagesAfterReopen = await worker.fetch(new Request(`https://aporia.test${roomPath}/messages`), env);
+    expect((await messagesAfterReopen.json()).messages).toEqual([]);
+    const stalePost = await worker.fetch(new Request(`https://aporia.test${roomPath}/messages`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': attendee.sessionToken },
+      body: JSON.stringify({ message: 'stale attendee', idempotencyKey: 'r24-stale' }),
+    }), env);
+    expect(stalePost.status).toBe(401);
+
+    const remove = await worker.fetch(new Request(`https://aporia.test${roomPath}/delete`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creatorToken }, body: '{}',
+    }), env);
+    expect(remove.status).toBe(200);
+    expect(emailBodies).toHaveLength(2);
+    const trashedRead = await worker.fetch(new Request(`https://aporia.test${roomPath}`), env);
+    const trashedMessages = await worker.fetch(new Request(`https://aporia.test${roomPath}/messages`), env);
+    const oldCodeLookup = await worker.fetch(new Request(`https://aporia.test/api/rooms/by-code/${created.meetingCode}`, { headers: { 'cf-connecting-ip': '192.0.2.24' } }), env);
+    expect([trashedRead.status, trashedMessages.status, oldCodeLookup.status]).toEqual([404, 404, 404]);
+
+    const recoveryLink = emailBodies[1].html.match(/href="([^"]+)"/)[1];
+    const recoveryToken = new URL(recoveryLink).hash.slice(1).split('&').find((part) => part.startsWith('creatorToken=')).slice('creatorToken='.length);
+    const recover = await worker.fetch(new Request('https://aporia.test/api/creator-links/consume', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: decodeURIComponent(recoveryToken) }),
+    }), env);
+    expect(recover.status).toBe(200);
+    const recoveryBody = await recover.json();
+    const anonymousRecoveredRead = await worker.fetch(new Request(`https://aporia.test${roomPath}`), env);
+    const ownerRecoveredRead = await worker.fetch(new Request(`https://aporia.test${roomPath}`, { headers: { 'x-aporia-creator': recoveryBody.creatorToken } }), env);
+    expect(anonymousRecoveredRead.status).toBe(401);
+    expect(ownerRecoveredRead.status).toBe(200);
+    expect((await ownerRecoveredRead.json()).status).toBe('recovered_read_only');
+    const finalCounts = await Promise.all([
+      db.prepare('SELECT COUNT(*) as count FROM participants WHERE room_id = ?').bind(created.roomId).first(),
+      db.prepare('SELECT COUNT(*) as count FROM sessions WHERE room_id = ?').bind(created.roomId).first(),
+      db.prepare('SELECT COUNT(*) as count FROM room_messages WHERE room_id = ?').bind(created.roomId).first(),
+      db.prepare('SELECT COUNT(*) as count FROM events WHERE room_id = ?').bind(created.roomId).first(),
+    ]);
+    expect(finalCounts.map((row) => row.count)).toEqual([0, 0, 0, 0]);
+  } finally {
+    vi.unstubAllGlobals();
+    if (created?.roomId) {
+      await db.prepare('DELETE FROM creator_auth_tokens WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM creator_sessions WHERE account_id = ?').bind(account?.id ?? '').run();
+      await db.prepare('DELETE FROM room_messages WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM proposal_claim_decisions WHERE proposal_id IN (SELECT id FROM proposals WHERE room_id = ?)').bind(created.roomId).run();
+      await db.prepare('DELETE FROM proposals WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM candidate_proposals WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM candidates WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM events WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM sessions WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM participants WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM rooms WHERE id = ?').bind(created.roomId).run();
+      if (account?.id) await db.prepare('DELETE FROM creator_accounts WHERE id = ?').bind(account.id).run();
+    }
+  }
 });
