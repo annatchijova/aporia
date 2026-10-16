@@ -274,3 +274,13 @@ El PRD queda en estado `approved`. El flujo de habilidades todavía no había ge
 ## Capacidad y costos compartidos — pendiente
 
 Para implementar límites sin bloquear una reunión normal ni dejar abierto el consumo de recursos, ¿cuál es el máximo de participantes por sala y qué cuota de uso de Gemini debería tener cada sala durante el hackathon? La prueba local llegó a 20 participantes y 20 opciones, pero eso no define el máximo del producto. También hace falta saber si preferís un tope estricto de llamadas por sala o un presupuesto máximo de uso/costo.
+
+## Precisión del ciclo de vida — pendiente
+
+Si empezás a eliminar una sala y el envío del correo de recuperación sigue pendiente, mientras tanto la reabrís desde otra pestaña, ¿qué debería pasar cuando termine el envío?
+
+- Que se complete el borrado y la sala quede en la papelera.
+- Que reabrir cancele el borrado pendiente. ¿Qué debería pasar con el correo que ya se envió?
+- Otra cosa.
+
+Estado: pregunta surgida de la ronda red team 20; no implica una decisión tomada.

@@ -96,3 +96,38 @@ it('forces two deletes past the cooldown read before either inserts a recovery t
   expect(tokens.results).toHaveLength(1);
   expect(tokens.results[0].expiresAt).toBe(rows.recoveryUntil);
 });
+
+it('lets a delayed delete follow a successful reopen as two valid lifecycle transitions', async () => {
+  const db = proxy.env.DB;
+  const snapshot = JSON.stringify({ roomId, title: 'Synthetic event', revision: 1, candidates: [], participants: [], facts: [], constraints: [], preferences: [], recoverySummary: { registeredCount: 0, attendedCount: null, nextMeetingCode: null } });
+  await db.prepare('DELETE FROM creator_auth_tokens WHERE room_id = ?').bind(roomId).run();
+  await db.prepare(`UPDATE rooms SET title = ?, snapshot_json = ?, revision = 1, meeting_code = '12345678', status = 'closed', deleted_at = NULL, recovery_until = NULL, recovery_snapshot_json = NULL WHERE id = ?`).bind('Synthetic event', snapshot, roomId).run();
+
+  let releaseEmail;
+  let reportEmail;
+  const emailStarted = new Promise((resolve) => { reportEmail = resolve; });
+  const emailReleased = new Promise((resolve) => { releaseEmail = resolve; });
+  vi.stubGlobal('fetch', vi.fn(async () => {
+    reportEmail();
+    await emailReleased;
+    return new Response(JSON.stringify({ id: 'synthetic-delayed-email' }), { status: 200 });
+  }));
+
+  const lifecycleRequest = (action, requestDb = db) => worker.fetch(new Request(`https://aporia.test/api/rooms/${roomId}/${action}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creatorToken }, body: '{}',
+  }), { ...proxy.env, DB: requestDb, RESEND_API_KEY: 'synthetic-only', CREATOR_EMAIL_FROM: 'no-reply@example.test', APORIA_APP_ORIGIN: 'https://aporia.test' });
+  const deleting = lifecycleRequest('delete');
+  await emailStarted;
+  const reopened = await lifecycleRequest('reopen');
+  expect(reopened.status).toBe(200);
+  expect((await db.prepare('SELECT status FROM rooms WHERE id = ?').bind(roomId).first()).status).toBe('reopened_read_only');
+  releaseEmail();
+  const deleted = await deleting;
+  expect(deleted.status).toBe(200);
+  const finalRoom = await db.prepare('SELECT status, recovery_snapshot_json as recovery FROM rooms WHERE id = ?').bind(roomId).first();
+  const recoveryTokens = await db.prepare("SELECT COUNT(*) as count FROM creator_auth_tokens WHERE room_id = ? AND purpose = 'recover'").bind(roomId).first();
+  expect(finalRoom.status).toBe('trashed');
+  expect(JSON.parse(finalRoom.recovery)).toMatchObject({ title: 'Recovered room', candidates: [], registeredCount: 0 });
+  expect(recoveryTokens.count).toBe(1);
+  await db.prepare('DELETE FROM creator_auth_tokens WHERE room_id = ?').bind(roomId).run();
+});

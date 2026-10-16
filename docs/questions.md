@@ -282,3 +282,13 @@ Current state (October 12, 2026): the PRD is approved and `devpost/spec.md` has 
 ## Shared capacity and costs — pending
 
 To implement limits without blocking a normal gathering or leaving resource use open, what is the maximum number of participants per room, and what Gemini usage quota should each room have during the hackathon? The local probe reached 20 participants and 20 options, but that does not define the product maximum. We also need to know whether you prefer a strict cap on calls per room or a maximum usage/cost budget.
+
+## Lifecycle clarification — pending
+
+If you start deleting a room and sending the recovery email is still pending, while that is happening you reopen it from another tab, what should happen when the send finishes?
+
+- The deletion completes and the room goes to the trash.
+- Reopening cancels the pending deletion. What should happen to the email that has already been sent?
+- Something else.
+
+Status: question raised by red-team Round 20; no decision is implied.
