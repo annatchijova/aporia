@@ -60,10 +60,16 @@ async function syntheticDb() {
       return { meta: { changes: 1 } };
     }
     if (sql.startsWith('UPDATE creator_auth_tokens SET expires_at')) {
-      const token = state.authTokens.get(String(values[1]));
-      if (!token || token.usedAt || state.room.status !== 'trashed' || state.room.deletedAt !== values[4]) return { meta: { changes: 0 } };
-      token.expiresAt = String(values[0]);
-      return { meta: { changes: 1 } };
+      if (state.room.status !== 'trashed' || state.room.deletedAt !== values[5]) return { meta: { changes: 0 } };
+      let changes = 0;
+      for (const [hash, token] of state.authTokens) {
+        if (token.roomId !== values[1] || token.purpose !== 'recover' || token.usedAt) continue;
+        if (token.expiresAt > String(values[2]) || hash === String(values[3])) {
+          token.expiresAt = String(values[0]);
+          changes++;
+        }
+      }
+      return { meta: { changes } };
     }
     if (sql.startsWith('DELETE FROM creator_auth_tokens')) {
       state.deletedChildren.add('creator_auth_tokens');

@@ -131,3 +131,55 @@ it('lets a delayed delete follow a successful reopen as two valid lifecycle tran
   expect(recoveryTokens.count).toBe(1);
   await db.prepare('DELETE FROM creator_auth_tokens WHERE room_id = ?').bind(roomId).run();
 });
+
+it('keeps a possibly delivered link from a failed attempt shorter than a later trash window', async () => {
+  const db = proxy.env.DB;
+  const snapshot = JSON.stringify({ roomId, title: 'Synthetic event', revision: 1, candidates: [], participants: [], facts: [], constraints: [], preferences: [], recoverySummary: { registeredCount: 0, attendedCount: null, nextMeetingCode: null } });
+  await db.prepare('DELETE FROM creator_auth_tokens WHERE room_id = ?').bind(roomId).run();
+  await db.prepare(`UPDATE rooms SET title = ?, snapshot_json = ?, revision = 1, meeting_code = '12345678', status = 'closed', deleted_at = NULL, recovery_until = NULL, recovery_snapshot_json = NULL WHERE id = ?`).bind('Synthetic event', snapshot, roomId).run();
+
+  const initialTime = Date.parse('2026-10-16T12:00:00.000Z');
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(initialTime);
+  const issuedTokens = [];
+  let sendCount = 0;
+  vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
+    sendCount++;
+    const html = JSON.parse(init.body).html;
+    issuedTokens.push(decodeURIComponent(html.match(/creatorToken=([^&"]+)/)[1]));
+    if (sendCount === 1) throw new Error('simulated lost provider response after possible acceptance');
+    return new Response(JSON.stringify({ id: 'synthetic-retry-email' }), { status: 200 });
+  }));
+
+  const request = () => worker.fetch(new Request(`https://aporia.test/api/rooms/${roomId}/delete`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creatorToken }, body: '{}' }), {
+    ...proxy.env, DB: db, RESEND_API_KEY: 'synthetic-only', CREATOR_EMAIL_FROM: 'no-reply@example.test', APORIA_APP_ORIGIN: 'https://aporia.test',
+  });
+  try {
+    const failedAttempt = await request();
+    expect(failedAttempt.status).toBe(503);
+    expect((await db.prepare('SELECT status FROM rooms WHERE id = ?').bind(roomId).first()).status).toBe('closed');
+    const firstToken = await db.prepare("SELECT expires_at as expiresAt FROM creator_auth_tokens WHERE room_id = ? AND purpose = 'recover'").bind(roomId).first();
+    expect(firstToken.expiresAt).toBe(new Date(initialTime + 7 * 86_400_000).toISOString());
+
+    vi.setSystemTime(initialTime + 61_000);
+    const retry = await request();
+    expect(retry.status).toBe(200);
+    expect(sendCount).toBe(2);
+    const room = await db.prepare('SELECT recovery_until as recoveryUntil FROM rooms WHERE id = ?').bind(roomId).first();
+    const tokens = await db.prepare("SELECT token_hash as tokenHash, expires_at as expiresAt FROM creator_auth_tokens WHERE room_id = ? AND purpose = 'recover' ORDER BY created_at").bind(roomId).all();
+    expect(tokens.results).toHaveLength(2);
+    expect(tokens.results.map((token) => token.expiresAt)).toEqual([room.recoveryUntil, room.recoveryUntil]);
+
+    vi.setSystemTime(Date.parse(room.recoveryUntil) - 1);
+    const consumeOldLink = await worker.fetch(new Request('https://aporia.test/api/creator-links/consume', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: issuedTokens[0] }),
+    }), { ...proxy.env, DB: db });
+    const oldLinkResult = { status: consumeOldLink.status, body: await consumeOldLink.text() };
+    expect(oldLinkResult.status).toBe(200);
+  } finally {
+    vi.useRealTimers();
+    await db.prepare('DELETE FROM creator_sessions WHERE account_id = ?').bind(accountId).run();
+    await db.prepare('DELETE FROM creator_auth_tokens WHERE room_id = ?').bind(roomId).run();
+    await db.prepare("UPDATE rooms SET status = 'closed', deleted_at = NULL, recovery_until = NULL, recovery_snapshot_json = NULL WHERE id = ?").bind(roomId).run();
+  }
+});
