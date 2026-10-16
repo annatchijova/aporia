@@ -573,3 +573,74 @@ it('restores pending candidate suggestions to room participants after reload', a
     }
   }
 });
+
+it('keeps AI contribution evidence through close and removes both AI queues on reopen', async () => {
+  proxy ??= await proxyPromise;
+  const db = proxy.env.DB;
+  const allow = { limit: async () => ({ success: true }) };
+  const env = { ...proxy.env, DB: db, ASSETS: { fetch: async () => new Response(null, { status: 404 }) }, ROOM_CREATE_LIMITER: allow, ROOM_JOIN_LIMITER: allow };
+  const creator = 'r27-creator-session';
+  let created;
+  let accountId;
+  try {
+    const create = await worker.fetch(new Request('https://aporia.test/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.27' }, body: JSON.stringify({ title: 'R27 event', displayName: 'R27 owner' }) }), env);
+    expect(create.status).toBe(200);
+    created = await create.json();
+    const extraction = {
+      id: 'r27-reviewed-proposal',
+      artifact: { id: 'r27-artifact', kind: 'text', content: 'I can do Saturday after 8', contentHash: 'synthetic', createdAt: new Date().toISOString(), participantId: created.participantId },
+      claims: [{ id: 'r27-claim', kind: 'proposal', participantId: created.participantId, value: { text: 'Saturday after 8' }, sourceText: 'I can do Saturday after 8', confidence: 'high', ambiguity: [] }],
+      warnings: [], provider: { name: 'gemini', model: 'synthetic-model' }, status: 'pending',
+    };
+    vi.spyOn(GeminiProvider.prototype, 'extract').mockResolvedValue(extraction);
+    vi.spyOn(GeminiProvider.prototype, 'propose').mockResolvedValue({ candidates: [{ title: 'R27 cafe', weekday: 6, startMinute: 1200, endMinute: 1320, priceCents: null, currency: null, area: null }], warnings: [], provider: { name: 'gemini', model: 'synthetic-model' } });
+    const submit = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/proposals`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ kind: 'text', content: extraction.artifact.content }) }), env);
+    expect(submit.status).toBe(200);
+    const confirm = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/proposals/${extraction.id}/confirm`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ claimId: 'r27-claim', participantId: created.participantId, expectedRevision: 1 }) }), env);
+    expect(confirm.status).toBe(200);
+    const reviewedList = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/proposals`, { headers: { 'x-aporia-session': created.sessionToken } }), env);
+    expect((await reviewedList.json()).proposals).toEqual([]);
+    const discover = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/candidate-discovery`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ expectedRevision: 2, idempotencyKey: 'r27-discovery' }) }), env);
+    expect(discover.status).toBe(200);
+
+    accountId = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+    await db.prepare('INSERT INTO creator_accounts (id, email, created_at) VALUES (?, ?, ?)').bind(accountId, 'r27-owner@example.test', timestamp).run();
+    await db.prepare('UPDATE rooms SET creator_account_id = ? WHERE id = ?').bind(accountId, created.roomId).run();
+    await db.prepare('INSERT INTO creator_sessions (token_hash, account_id, created_at, expires_at) VALUES (?, ?, ?, ?)').bind(digest(creator), accountId, timestamp, new Date(Date.now() + 86_400_000).toISOString()).run();
+    const roomPath = `https://aporia.test/api/rooms/${created.roomId}`;
+    const close = await worker.fetch(new Request(`${roomPath}/close`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creator }, body: '{}' }), env);
+    expect(close.status).toBe(200);
+    const retained = await db.prepare('SELECT p.status, p.artifact_json as artifact, p.claims_json as claims, (SELECT COUNT(*) FROM candidate_proposals WHERE room_id = p.room_id) as candidateCount FROM proposals p WHERE p.id = ?').bind(extraction.id).first();
+    expect(retained.status).toBe('confirmed');
+    expect(JSON.parse(retained.artifact).content).toBe(extraction.artifact.content);
+    expect(JSON.parse(retained.claims)[0].sourceText).toBe(extraction.claims[0].sourceText);
+    expect(retained.candidateCount).toBe(1);
+    const pendingWhileClosed = await worker.fetch(new Request(`${roomPath}/proposals`, { headers: { 'x-aporia-session': created.sessionToken } }), env);
+    expect(pendingWhileClosed.status).toBe(409);
+
+    const reopen = await worker.fetch(new Request(`${roomPath}/reopen`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creator }, body: '{}' }), env);
+    expect(reopen.status).toBe(200);
+    const remaining = await Promise.all([
+      db.prepare('SELECT COUNT(*) as count FROM proposals WHERE room_id = ?').bind(created.roomId).first(),
+      db.prepare('SELECT COUNT(*) as count FROM candidate_proposals WHERE room_id = ?').bind(created.roomId).first(),
+      db.prepare('SELECT COUNT(*) as count FROM proposal_claim_decisions WHERE proposal_id = ?').bind(extraction.id).first(),
+    ]);
+    expect(remaining.map((row) => row.count)).toEqual([0, 0, 0]);
+  } finally {
+    vi.restoreAllMocks();
+    if (created?.roomId) {
+      await db.prepare('DELETE FROM proposal_claim_decisions WHERE proposal_id IN (SELECT id FROM proposals WHERE room_id = ?)').bind(created.roomId).run();
+      await db.prepare('DELETE FROM proposals WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM candidate_proposals WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM events WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM sessions WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM participants WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM rooms WHERE id = ?').bind(created.roomId).run();
+    }
+    if (accountId) {
+      await db.prepare('DELETE FROM creator_sessions WHERE account_id = ?').bind(accountId).run();
+      await db.prepare('DELETE FROM creator_accounts WHERE id = ?').bind(accountId).run();
+    }
+  }
+});
