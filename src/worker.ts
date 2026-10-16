@@ -412,6 +412,16 @@ async function discoverCandidates(env: Env, request: Request, roomId: string): P
   }
 }
 
+async function listCandidateProposals(env: Env, request: Request, roomId: string): Promise<Response> {
+  const blocked = await requireActive(env, roomId); if (blocked) return blocked;
+  const actor = await session(request, env, roomId);
+  if (!actor) return json({ error: 'valid room session required' }, 401);
+  const result = await env.DB.prepare(`SELECT cp.id, cp.base_revision as baseRevision, cp.drafts_json as drafts, cp.provider_json as provider, cp.warnings_json as warnings, cp.status
+    FROM candidate_proposals cp JOIN rooms r ON r.id = cp.room_id
+    WHERE cp.room_id = ? AND cp.status = 'pending' AND cp.base_revision = r.revision ORDER BY cp.created_at, cp.id`).bind(roomId).all<{ id: string; baseRevision: number; drafts: string; provider: string; warnings: string; status: string }>();
+  return json({ proposals: (result.results ?? []).map((row) => ({ id: row.id, baseRevision: row.baseRevision, candidates: JSON.parse(row.drafts), provider: JSON.parse(row.provider), warnings: JSON.parse(row.warnings), status: row.status })) });
+}
+
 async function acceptCandidateProposal(env: Env, request: Request, roomId: string, proposalId: string): Promise<Response> {
   const blocked = await requireActive(env, roomId); if (blocked) return blocked;
   const actor = await session(request, env, roomId);
@@ -676,6 +686,7 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
   const candidateMatch = path.match(/^\/api\/rooms\/([^/]+)\/candidates$/);
   if (request.method === 'POST' && candidateMatch) return addCandidate(env, request, candidateMatch[1]);
   const discoveryMatch = path.match(/^\/api\/rooms\/([^/]+)\/candidate-discovery$/);
+  if (request.method === 'GET' && discoveryMatch) return listCandidateProposals(env, request, discoveryMatch[1]);
   if (request.method === 'POST' && discoveryMatch) return discoverCandidates(env, request, discoveryMatch[1]);
   const acceptDiscoveryMatch = path.match(/^\/api\/rooms\/([^/]+)\/candidate-discovery\/([^/]+)\/accept$/);
   if (request.method === 'POST' && acceptDiscoveryMatch) return acceptCandidateProposal(env, request, acceptDiscoveryMatch[1], acceptDiscoveryMatch[2]);

@@ -521,3 +521,55 @@ it('restores only the authenticated contributor’s own pending proposals', asyn
     }
   }
 });
+
+it('restores pending candidate suggestions to room participants after reload', async () => {
+  const db = proxy.env.DB;
+  const allow = { limit: async () => ({ success: true }) };
+  const env = { ...proxy.env, DB: db, ASSETS: { fetch: async () => new Response(null, { status: 404 }) }, ROOM_LOOKUP_LIMITER: allow, ROOM_CREATE_LIMITER: allow, ROOM_JOIN_LIMITER: allow };
+  let created;
+  try {
+    const create = await worker.fetch(new Request('https://aporia.test/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.26' }, body: JSON.stringify({ title: 'R26 generated options', displayName: 'R26 owner' }) }), env);
+    expect(create.status).toBe(200);
+    created = await create.json();
+    const otherJoin = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/participants`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ displayName: 'R26 reviewer' }) }), env);
+    expect(otherJoin.status).toBe(200);
+    const other = await otherJoin.json();
+    vi.spyOn(GeminiProvider.prototype, 'propose').mockResolvedValue({
+      candidates: [{ title: 'Synthetic cafe', weekday: 6, startMinute: 1200, endMinute: 1320, priceCents: null, currency: null, area: null }],
+      warnings: [], provider: { name: 'gemini', model: 'synthetic-model' },
+    });
+    const discovery = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/candidate-discovery`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken },
+      body: JSON.stringify({ expectedRevision: 2, idempotencyKey: 'r26-discovery' }),
+    }), env);
+    expect(discovery.status).toBe(200);
+    const { proposal } = await discovery.json();
+    const stored = await db.prepare('SELECT status, drafts_json as drafts FROM candidate_proposals WHERE id = ?').bind(proposal.id).first();
+    expect(stored.status).toBe('pending');
+    expect(JSON.parse(stored.drafts)[0].title).toBe('Synthetic cafe');
+    const reload = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/candidate-discovery`, { headers: { 'x-aporia-session': created.sessionToken } }), env);
+    expect(reload.status).toBe(200);
+    expect((await reload.json()).proposals.map((item) => item.id)).toEqual([proposal.id]);
+    const otherList = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/candidate-discovery`, { headers: { 'x-aporia-session': other.sessionToken } }), env);
+    expect((await otherList.json()).proposals.map((item) => item.id)).toEqual([proposal.id]);
+    const anonymous = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/candidate-discovery`), env);
+    expect(anonymous.status).toBe(401);
+    const accept = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/candidate-discovery/${proposal.id}/accept`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': other.sessionToken },
+      body: JSON.stringify({ expectedRevision: 2, idempotencyKey: 'r26-accept' }),
+    }), env);
+    expect(accept.status).toBe(200);
+    expect((await accept.json()).snapshot.candidates).toHaveLength(1);
+    const afterAcceptance = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/candidate-discovery`, { headers: { 'x-aporia-session': created.sessionToken } }), env);
+    expect((await afterAcceptance.json()).proposals).toEqual([]);
+  } finally {
+    vi.restoreAllMocks();
+    if (created?.roomId) {
+      await db.prepare('DELETE FROM candidate_proposals WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM events WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM sessions WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM participants WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM rooms WHERE id = ?').bind(created.roomId).run();
+    }
+  }
+});
