@@ -1032,3 +1032,79 @@ it('keeps duplicate-claim double confirmation to one decision without an unhandl
     }
   }
 });
+
+it('measures repeated Gemini extraction calls from one authenticated participant', async () => {
+  proxy ??= await proxyPromise;
+  const db = proxy.env.DB;
+  const allow = { limit: async () => ({ success: true }) };
+  const proposalBuckets = new Map();
+  const aiProposalLimiter = { limit: async ({ key }) => {
+    const count = proposalBuckets.get(key) ?? 0;
+    proposalBuckets.set(key, count + 1);
+    return { success: count < 5 };
+  } };
+  const env = { ...proxy.env, DB: db, ASSETS: { fetch: async () => new Response(null, { status: 404 }) }, ROOM_CREATE_LIMITER: allow, AI_PROPOSAL_LIMITER: aiProposalLimiter };
+  let created;
+  let providerCalls = 0;
+  try {
+    const create = await worker.fetch(new Request('https://aporia.test/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.34' }, body: JSON.stringify({ title: 'R34 AI call budget', displayName: 'R34 owner' }) }), env);
+    expect(create.status).toBe(200);
+    created = await create.json();
+    vi.spyOn(GeminiProvider.prototype, 'extract').mockImplementation(async ({ artifact }) => {
+      providerCalls++;
+      return { id: `r34-proposal-${providerCalls}`, artifact, claims: [], warnings: [], provider: { name: 'gemini', model: 'synthetic-model' }, status: 'pending' };
+    });
+    const submit = () => worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/proposals`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ kind: 'text', content: 'A synthetic contribution' }) }), env);
+    const responses = await Promise.all(Array.from({ length: 6 }, submit));
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 200, 200, 200, 200, 429]);
+    expect(responses.find((response) => response.status === 429)?.headers.get('retry-after')).toBe('60');
+    expect(providerCalls).toBe(5);
+  } finally {
+    vi.restoreAllMocks();
+    if (created?.roomId) {
+      await db.prepare('DELETE FROM proposal_claim_decisions WHERE proposal_id IN (SELECT id FROM proposals WHERE room_id = ?)').bind(created.roomId).run();
+      await db.prepare('DELETE FROM proposals WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM events WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM sessions WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM participants WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM rooms WHERE id = ?').bind(created.roomId).run();
+    }
+  }
+});
+
+it('limits repeated Gemini candidate discovery for one authenticated participant', async () => {
+  proxy ??= await proxyPromise;
+  const db = proxy.env.DB;
+  const allow = { limit: async () => ({ success: true }) };
+  const discoveryBuckets = new Map();
+  const aiDiscoveryLimiter = { limit: async ({ key }) => {
+    const count = discoveryBuckets.get(key) ?? 0;
+    discoveryBuckets.set(key, count + 1);
+    return { success: count < 5 };
+  } };
+  const env = { ...proxy.env, DB: db, ASSETS: { fetch: async () => new Response(null, { status: 404 }) }, ROOM_CREATE_LIMITER: allow, AI_DISCOVERY_LIMITER: aiDiscoveryLimiter };
+  let created;
+  let providerCalls = 0;
+  try {
+    const create = await worker.fetch(new Request('https://aporia.test/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.35' }, body: JSON.stringify({ title: 'R35 AI discovery budget', displayName: 'R35 owner' }) }), env);
+    expect(create.status).toBe(200);
+    created = await create.json();
+    vi.spyOn(GeminiProvider.prototype, 'propose').mockImplementation(async () => {
+      providerCalls++;
+      return { candidates: [], warnings: ['synthetic empty result'], provider: { name: 'gemini', model: 'synthetic-model' } };
+    });
+    const discover = (index) => worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/candidate-discovery`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ expectedRevision: 1, idempotencyKey: `r35-discovery-${index}` }) }), env);
+    const responses = await Promise.all(Array.from({ length: 6 }, (_, index) => discover(index)));
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 200, 200, 200, 200, 429]);
+    expect(providerCalls).toBe(5);
+  } finally {
+    vi.restoreAllMocks();
+    if (created?.roomId) {
+      await db.prepare('DELETE FROM candidate_proposals WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM events WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM sessions WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM participants WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM rooms WHERE id = ?').bind(created.roomId).run();
+    }
+  }
+});

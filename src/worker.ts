@@ -19,6 +19,8 @@ interface Env {
   ROOM_CREATE_LIMITER: RateLimit;
   ROOM_JOIN_LIMITER: RateLimit;
   CREATOR_ACCESS_LIMITER: RateLimit;
+  AI_PROPOSAL_LIMITER: RateLimit;
+  AI_DISCOVERY_LIMITER: RateLimit;
 }
 
 class ConcurrentRoomUpdateError extends Error {
@@ -170,6 +172,19 @@ async function enforcePublicBurstLimit(request: Request, env: Env, url: URL): Pr
   }
 }
 
+async function enforceAiBurstLimit(limiter: RateLimit, operation: string, roomId: string, participantId: string): Promise<Response | null> {
+  try {
+    const { success } = await limiter.limit({ key: `aporia:ai:${operation}:${roomId}:${participantId}` });
+    if (success) return null;
+    return new Response(JSON.stringify({ error: 'too many AI requests; try again shortly' }), {
+      status: 429,
+      headers: { ...jsonHeaders, 'retry-after': '60' },
+    });
+  } catch {
+    return json({ error: 'AI request protection is temporarily unavailable' }, 503);
+  }
+}
+
 async function createRoom(env: Env, request: Request): Promise<Response> {
   const input = await body(request);
   const title = textInput(input.title, 'title', 120);
@@ -284,6 +299,8 @@ async function createProposal(env: Env, request: Request, roomId: string): Promi
   if (!snapshot) return json({ error: 'room not found' }, 404);
   const artifact = { id: crypto.randomUUID(), kind, content, contentHash: await sha256(content), createdAt: now(), participantId: actor.participantId, ...artifactExtras };
   const names = snapshot.participants.map((item) => item.displayName);
+  const limited = await enforceAiBurstLimit(env.AI_PROPOSAL_LIMITER, 'extract', roomId, actor.participantId);
+  if (limited) return limited;
   try {
     const proposal = await new GeminiProvider(env).extract({ artifact, participantNames: names });
     const redactedImageArtifact = kind === 'image' ? {
@@ -399,6 +416,8 @@ async function discoverCandidates(env: Env, request: Request, roomId: string): P
   if (!snapshot) return json({ error: 'room not found' }, 404);
   if (snapshot.revision !== expectedRevision) return json({ error: 'stale room revision', currentRevision: snapshot.revision }, 409);
   const knownConstraints = snapshot.constraints.map((constraint) => JSON.stringify(constraint));
+  const limited = await enforceAiBurstLimit(env.AI_DISCOVERY_LIMITER, 'discover', roomId, actor.participantId);
+  if (limited) return limited;
   try {
     const proposal = await new GeminiProvider(env).propose({ prompt: `Planning goal: ${snapshot.title}`, knownConstraints });
     const proposalId = crypto.randomUUID();

@@ -36,6 +36,8 @@ function fakeEnv() {
     ROOM_CREATE_LIMITER: { limit: async () => ({ success: true }) },
     ROOM_JOIN_LIMITER: { limit: async () => ({ success: true }) },
     CREATOR_ACCESS_LIMITER: { limit: async () => ({ success: true }) },
+    AI_PROPOSAL_LIMITER: { limit: async () => ({ success: true }) },
+    AI_DISCOVERY_LIMITER: { limit: async () => ({ success: true }) },
     ASSETS: { fetch: vi.fn() },
   };
   return { env: env as unknown as Parameters<typeof worker.fetch>[1], insertedProposals };
@@ -94,5 +96,18 @@ describe('Worker image proposal flow', () => {
     expect(response.status).toBe(503);
     expect(payload).toMatchObject({ error: 'Extraction failed. Try again.', code: 'unavailable' });
     expect(insertedProposals).toHaveLength(0);
+  });
+
+  it('fails closed when the AI request limiter is unavailable', async () => {
+    const { env } = fakeEnv();
+    Object.assign(env, { AI_PROPOSAL_LIMITER: { limit: vi.fn().mockRejectedValue(new Error('synthetic limiter failure')) } });
+    const extract = vi.spyOn(GeminiProvider.prototype, 'extract');
+
+    const response = await worker.fetch(imageRequest(), env);
+    const payload = await response.json() as { error: string };
+
+    expect(response.status).toBe(503);
+    expect(payload.error).toBe('AI request protection is temporarily unavailable');
+    expect(extract).not.toHaveBeenCalled();
   });
 });

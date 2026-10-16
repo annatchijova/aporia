@@ -366,3 +366,10 @@ This log records how the official Build With AI: Basics skills are used in this 
 - **Finding/fix:** Before the fix, the losing request hit the unique decision key and returned 400. Decision insertion now ignores an already-existing key, letting the route report 409 while retaining one stored decision.
 - **Evidence:** The actual Worker/local Wrangler D1 run returns 200/409, records one decision, confirms the proposal once, and leaves room revision/facts unchanged. Sixteen D1 tests pass; see [Round 31](red-team/ROUND-31-DUPLICATE-CLAIM-REVIEW-RACE.md).
 - **Limits:** Synthetic data and mocked Gemini; no browser, production D1, or deployed Worker.
+
+## October 16, 2026 — AI provider burst limits
+
+- **Used:** Personal `resource-exhaustion-review` to trace request-to-provider amplification and state the limit honestly; `red-team-auditing` and `falsifiable-testing` to compare pre-fix and post-fix calls through the actual Worker handlers; `variant-analysis` to inspect both Gemini invocation routes; `git-discipline` to record the starting revision before edits.
+- **Finding/fix:** One authenticated session made six concurrent extraction calls and reached the mocked Gemini method six times. Added separate 5-per-60-second Worker limiter bindings per room/participant for extraction and candidate discovery, with visible 429 and fail-closed 503 behavior. Existing candidate-discovery idempotency replays are checked before spending provider allowance.
+- **Evidence:** Local Wrangler D1 tests show six requests become five mocked provider calls plus one 429 for each AI route. No live Gemini request or charge occurred. See [Round 32](red-team/ROUND-32-AI-PROVIDER-BURST-LIMITS.md) and [ADR-0008](decisions/ADR-0008-ai-provider-burst-limits.md).
+- **Limits:** The local stub validates handler behavior, not Cloudflare's deployed limiter. These per-participant burst caps are not a hard global or monthly spend budget; multiple identities/rooms/locations can exceed the aggregate cap. A true financial ceiling and provider-cost telemetry remain open.

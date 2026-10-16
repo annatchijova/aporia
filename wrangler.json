@@ -30,6 +30,16 @@
       "name": "CREATOR_ACCESS_LIMITER",
       "namespace_id": "89261004",
       "simple": { "limit": 5, "period": 60 }
+    },
+    {
+      "name": "AI_PROPOSAL_LIMITER",
+      "namespace_id": "89261005",
+      "simple": { "limit": 5, "period": 60 }
+    },
+    {
+      "name": "AI_DISCOVERY_LIMITER",
+      "namespace_id": "89261006",
+      "simple": { "limit": 5, "period": 60 }
     }
   ],
   "d1_databases": [
@@ -70,6 +80,16 @@
         {
           "name": "CREATOR_ACCESS_LIMITER",
           "namespace_id": "89262004",
+          "simple": { "limit": 5, "period": 60 }
+        },
+        {
+          "name": "AI_PROPOSAL_LIMITER",
+          "namespace_id": "89262005",
+          "simple": { "limit": 5, "period": 60 }
+        },
+        {
+          "name": "AI_DISCOVERY_LIMITER",
+          "namespace_id": "89262006",
           "simple": { "limit": 5, "period": 60 }
         }
       ],
