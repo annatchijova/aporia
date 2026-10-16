@@ -410,23 +410,52 @@ async function discoverCandidates(env: Env, request: Request, roomId: string): P
   const expectedRevision = numberInput(input.expectedRevision, 'expectedRevision');
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) return json({ error: 'expectedRevision is required' }, 400);
   const key = idempotencyKey(input);
-  const existing = await env.DB.prepare('SELECT id, base_revision as baseRevision, drafts_json as drafts, provider_json as provider, warnings_json as warnings, status FROM candidate_proposals WHERE room_id = ? AND idempotency_key = ?').bind(roomId, key).first<{ id: string; baseRevision: number; drafts: string; provider: string; warnings: string; status: string }>();
-  if (existing) return json({ proposal: { id: existing.id, baseRevision: existing.baseRevision, candidates: JSON.parse(existing.drafts), provider: JSON.parse(existing.provider), warnings: JSON.parse(existing.warnings), status: existing.status }, replayed: true });
+  const existing = await env.DB.prepare('SELECT id, base_revision as baseRevision, drafts_json as drafts, provider_json as provider, warnings_json as warnings, status, created_at as createdAt FROM candidate_proposals WHERE room_id = ? AND idempotency_key = ?').bind(roomId, key).first<{ id: string; baseRevision: number; drafts: string; provider: string; warnings: string; status: string; createdAt: string }>();
+  if (existing?.status === 'pending' || existing?.status === 'accepted') return json({ proposal: { id: existing.id, baseRevision: existing.baseRevision, candidates: JSON.parse(existing.drafts), provider: JSON.parse(existing.provider), warnings: JSON.parse(existing.warnings), status: existing.status }, replayed: true });
+  if (existing?.status === 'processing' && Date.now() - Date.parse(existing.createdAt ?? '') < 120_000) {
+    return new Response(JSON.stringify({ error: 'candidate discovery is already in progress; retry with the same idempotency key' }), {
+      status: 409,
+      headers: { ...jsonHeaders, 'retry-after': '2' },
+    });
+  }
   const snapshot = await readRoom(env, roomId);
   if (!snapshot) return json({ error: 'room not found' }, 404);
   if (snapshot.revision !== expectedRevision) return json({ error: 'stale room revision', currentRevision: snapshot.revision }, 409);
   const knownConstraints = snapshot.constraints.map((constraint) => JSON.stringify(constraint));
+  const proposalId = crypto.randomUUID();
+  const reservedAt = now();
+  const leaseBefore = new Date(Date.now() - 120_000).toISOString();
+  let reservation = await env.DB.prepare(`INSERT OR IGNORE INTO candidate_proposals (id, room_id, base_revision, idempotency_key, drafts_json, provider_json, warnings_json, status, created_at)
+    SELECT ?, ?, ?, ?, '[]', '{}', '[]', 'processing', ? WHERE EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(proposalId, roomId, snapshot.revision, key, reservedAt, roomId, snapshot.revision).run();
+  let ownsReservation = (reservation.meta?.changes ?? 0) === 1;
+  if (!ownsReservation) {
+    reservation = await env.DB.prepare(`UPDATE candidate_proposals SET id = ?, base_revision = ?, drafts_json = '[]', provider_json = '{}', warnings_json = '[]', status = 'processing', created_at = ?
+      WHERE room_id = ? AND idempotency_key = ? AND status = 'processing' AND created_at <= ?
+      AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(proposalId, snapshot.revision, reservedAt, roomId, key, leaseBefore, roomId, snapshot.revision).run();
+    ownsReservation = (reservation.meta?.changes ?? 0) === 1;
+  }
+  if (!ownsReservation) {
+    const current = await env.DB.prepare('SELECT id, base_revision as baseRevision, drafts_json as drafts, provider_json as provider, warnings_json as warnings, status, created_at as createdAt FROM candidate_proposals WHERE room_id = ? AND idempotency_key = ?').bind(roomId, key).first<{ id: string; baseRevision: number; drafts: string; provider: string; warnings: string; status: string; createdAt: string }>();
+    if (current?.status === 'pending' || current?.status === 'accepted') return json({ proposal: { id: current.id, baseRevision: current.baseRevision, candidates: JSON.parse(current.drafts), provider: JSON.parse(current.provider), warnings: JSON.parse(current.warnings), status: current.status }, replayed: true });
+    if (current?.status === 'processing') return new Response(JSON.stringify({ error: 'candidate discovery is already in progress; retry with the same idempotency key' }), { status: 409, headers: { ...jsonHeaders, 'retry-after': '2' } });
+    return json({ error: 'candidate discovery reservation could not be acquired' }, 409);
+  }
   const limited = await enforceAiBurstLimit(env.AI_DISCOVERY_LIMITER, 'discover', roomId, actor.participantId);
-  if (limited) return limited;
+  if (limited) {
+    try { await env.DB.prepare("DELETE FROM candidate_proposals WHERE id = ? AND status = 'processing'").bind(proposalId).run(); } catch { /* The reservation's lease permits a later retry if cleanup fails. */ }
+    return limited;
+  }
   try {
     const proposal = await new GeminiProvider(env).propose({ prompt: `Planning goal: ${snapshot.title}`, knownConstraints });
-    const proposalId = crypto.randomUUID();
-    await env.DB.prepare(`INSERT OR IGNORE INTO candidate_proposals (id, room_id, base_revision, idempotency_key, drafts_json, provider_json, warnings_json, status, created_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(proposalId, roomId, snapshot.revision, key, JSON.stringify(proposal.candidates), JSON.stringify(proposal.provider), JSON.stringify(proposal.warnings), 'pending', now(), roomId, snapshot.revision).run();
-    const stored = await env.DB.prepare('SELECT id, base_revision as baseRevision, drafts_json as drafts, provider_json as provider, warnings_json as warnings, status FROM candidate_proposals WHERE room_id = ? AND idempotency_key = ?').bind(roomId, key).first<{ id: string; baseRevision: number; drafts: string; provider: string; warnings: string; status: string }>();
-    if (!stored) return json({ error: 'candidate proposal could not be stored' }, 503);
-    return json({ proposal: { id: stored.id, baseRevision: stored.baseRevision, candidates: JSON.parse(stored.drafts), provider: JSON.parse(stored.provider), warnings: JSON.parse(stored.warnings), status: stored.status } });
+    const stored = await env.DB.prepare(`UPDATE candidate_proposals SET drafts_json = ?, provider_json = ?, warnings_json = ?, status = 'pending'
+      WHERE id = ? AND status = 'processing' AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(JSON.stringify(proposal.candidates), JSON.stringify(proposal.provider), JSON.stringify(proposal.warnings), proposalId, roomId, snapshot.revision).run();
+    if ((stored.meta?.changes ?? 0) !== 1) {
+      try { await env.DB.prepare("DELETE FROM candidate_proposals WHERE id = ? AND status = 'processing'").bind(proposalId).run(); } catch { /* The reservation's lease permits a later retry if cleanup fails. */ }
+      return json({ error: 'room changed while candidate discovery was running; retry from the current room state' }, 409);
+    }
+    return json({ proposal: { id: proposalId, baseRevision: snapshot.revision, candidates: proposal.candidates, provider: proposal.provider, warnings: proposal.warnings, status: 'pending' } });
   } catch (error) {
+    try { await env.DB.prepare("DELETE FROM candidate_proposals WHERE id = ? AND status = 'processing'").bind(proposalId).run(); } catch { /* The reservation's lease permits a later retry if cleanup fails. */ }
     if (error instanceof ProviderError) {
       const status = error.code === 'rate_limited' ? 429 : error.code === 'timeout' ? 504 : error.code === 'unavailable' && error.retryable ? 503 : 502;
       return json({ error: 'Candidate discovery failed. Try again.', code: error.code, retryable: error.retryable }, status);
