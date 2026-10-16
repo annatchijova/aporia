@@ -21,6 +21,10 @@ interface Env {
   CREATOR_ACCESS_LIMITER: RateLimit;
 }
 
+class ConcurrentRoomUpdateError extends Error {
+  constructor() { super('room changed; refresh and try again'); }
+}
+
 const jsonHeaders = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
 
 function json(data: unknown, status = 200): Response {
@@ -118,9 +122,9 @@ async function commitEvent(env: Env, snapshot: DecisionSnapshot, event: RoomEven
   const next = applyEvent(snapshot, event);
   const update = env.DB.prepare("UPDATE rooms SET revision = ?, snapshot_json = ? WHERE id = ? AND revision = ? AND status = 'active'").bind(next.revision, JSON.stringify(next), snapshot.roomId, snapshot.revision);
   const insert = env.DB.prepare(`INSERT INTO events (id, room_id, revision, actor_id, event_type, payload_json, created_at)
-    SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(event.id, event.roomId, event.revision, event.actorId, event.type, JSON.stringify(event.payload), event.createdAt, event.roomId, event.revision);
+    SELECT ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1 AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(event.id, event.roomId, event.revision, event.actorId, event.type, JSON.stringify(event.payload), event.createdAt, event.roomId, event.revision);
   const result = await env.DB.batch([update, insert]);
-  if ((result[0]?.meta?.changes ?? 0) !== 1) throw new Error('stale room revision');
+  if ((result[0]?.meta?.changes ?? 0) !== 1) throw new ConcurrentRoomUpdateError();
   return next;
 }
 
@@ -336,11 +340,11 @@ async function confirmClaim(env: Env, request: Request, roomId: string, proposal
     return json({ error: 'participantId must belong to this room' }, 400);
   }
   const duplicate = snapshot.facts.some((fact) => fact.participantId === participantId && fact.kind === claim.kind && canonicalize(fact.value) === canonicalize(claim.value));
-  const decision = (revision: number) => env.DB.prepare(`INSERT INTO proposal_claim_decisions (proposal_id, claim_id, decision, created_at)
-    SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(proposalId, claim.id, duplicate ? 'duplicate' : 'confirmed', now(), roomId, revision);
+  const decision = (revision: number, requirePriorEvent = false) => env.DB.prepare(`INSERT INTO proposal_claim_decisions (proposal_id, claim_id, decision, created_at)
+    SELECT ?, ?, ?, ? WHERE ${requirePriorEvent ? 'changes() = 1 AND ' : ''}EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(proposalId, claim.id, duplicate ? 'duplicate' : 'confirmed', now(), roomId, revision);
   const proposalUpdate = (revision: number) => env.DB.prepare(`UPDATE proposals SET status = 'confirmed' WHERE id = ? AND status = 'pending' AND
     (SELECT COUNT(*) FROM proposal_claim_decisions WHERE proposal_id = ? AND decision IN ('confirmed', 'duplicate')) >= ?
-    AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(proposalId, proposalId, claims.length, roomId, revision);
+    AND changes() = 1 AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(proposalId, proposalId, claims.length, roomId, revision);
   if (duplicate) {
     const result = await env.DB.batch([decision(snapshot.revision), proposalUpdate(snapshot.revision)]);
     if ((result[0]?.meta?.changes ?? 0) !== 1) return json({ error: 'claim review changed; refresh the room and try again' }, 409);
@@ -351,9 +355,9 @@ async function confirmClaim(env: Env, request: Request, roomId: string, proposal
   const event: RoomEvent = { id: crypto.randomUUID(), roomId, revision: snapshot.revision + 1, actorId: actor.participantId, type: 'fact.confirmed', payload: fact, createdAt: now() };
   const next = applyEvent(snapshot, event);
   const update = env.DB.prepare("UPDATE rooms SET revision = ?, snapshot_json = ? WHERE id = ? AND revision = ? AND status = 'active'").bind(next.revision, JSON.stringify(next), roomId, snapshot.revision);
-  const insert = env.DB.prepare(`INSERT INTO events (id, room_id, revision, actor_id, event_type, payload_json, created_at)
-    SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(event.id, roomId, event.revision, event.actorId, event.type, JSON.stringify(event.payload), event.createdAt, roomId, next.revision);
-  const result = await env.DB.batch([update, insert, decision(next.revision), proposalUpdate(next.revision)]);
+  const guardedInsert = env.DB.prepare(`INSERT INTO events (id, room_id, revision, actor_id, event_type, payload_json, created_at)
+    SELECT ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1 AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(event.id, event.roomId, event.revision, event.actorId, event.type, JSON.stringify(event.payload), event.createdAt, roomId, next.revision);
+  const result = await env.DB.batch([update, guardedInsert, decision(next.revision, true), proposalUpdate(next.revision)]);
   if ((result[0]?.meta?.changes ?? 0) !== 1 || (result[2]?.meta?.changes ?? 0) !== 1) return json({ error: 'concurrent change; retry from current room state' }, 409);
   return json({ snapshot: next, completedClaimId: claim.id, duplicate: false });
 }
@@ -440,16 +444,17 @@ async function acceptCandidateProposal(env: Env, request: Request, roomId: strin
   const provider = JSON.parse(proposal.provider) as { name: string; model: string; requestId?: string };
   const candidates: Candidate[] = drafts.map((draft) => ({ ...draft, id: crypto.randomUUID(), source: { kind: 'gemini', ref: provider.requestId ?? provider.model } }));
   if (candidates.length === 0) {
-    await env.DB.prepare(`UPDATE candidate_proposals SET status = ?, accepted_event_id = ? WHERE id = ? AND status = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind('accepted', key, proposalId, 'pending', roomId, snapshot.revision).run();
+    const result = await env.DB.prepare(`UPDATE candidate_proposals SET status = ?, accepted_event_id = ? WHERE id = ? AND status = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind('accepted', key, proposalId, 'pending', roomId, snapshot.revision).run();
+    if ((result.meta?.changes ?? 0) !== 1) return json({ error: 'concurrent change; retry from current room state' }, 409);
     return json({ snapshot });
   }
   const event: RoomEvent = { id: crypto.randomUUID(), roomId, revision: snapshot.revision + 1, actorId: actor.participantId, type: 'candidate.accepted', payload: candidates, createdAt: now() };
   const next = applyEvent(snapshot, event);
   const update = env.DB.prepare("UPDATE rooms SET revision = ?, snapshot_json = ? WHERE id = ? AND revision = ? AND status = 'active'").bind(next.revision, JSON.stringify(next), roomId, snapshot.revision);
   const insert = env.DB.prepare(`INSERT INTO events (id, room_id, revision, actor_id, event_type, payload_json, created_at)
-    SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(event.id, event.roomId, event.revision, event.actorId, event.type, JSON.stringify(event.payload), event.createdAt, roomId, next.revision);
+    SELECT ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1 AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(event.id, event.roomId, event.revision, event.actorId, event.type, JSON.stringify(event.payload), event.createdAt, roomId, next.revision);
   const proposalUpdate = env.DB.prepare(`UPDATE candidate_proposals SET status = ?, accepted_event_id = ? WHERE id = ? AND status = ?
-    AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind('accepted', event.id, proposalId, 'pending', roomId, next.revision);
+    AND changes() = 1 AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind('accepted', event.id, proposalId, 'pending', roomId, next.revision);
   const result = await env.DB.batch([update, insert, proposalUpdate]);
   if ((result[0]?.meta?.changes ?? 0) !== 1 || (result[2]?.meta?.changes ?? 0) !== 1) return json({ error: 'concurrent change; retry from current room state' }, 409);
   return json({ snapshot: next });
@@ -736,6 +741,7 @@ export default {
       }
       return env.ASSETS.fetch(request);
     } catch (error) {
+      if (error instanceof ConcurrentRoomUpdateError) return corsResponse(request, env, json({ error: error.message }, 409));
       const message = error instanceof Error ? error.message : 'request failed';
       return corsResponse(request, env, json({ error: message }, 400));
     }
