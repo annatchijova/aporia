@@ -353,3 +353,9 @@ This log records how the official Build With AI: Basics skills are used in this 
 - **Evidence:** Actual Worker/local D1 races verify one winner, clean 409 losers, no duplicate events/facts/decisions, and no falsely accepted proposal. Fourteen D1 cases, 37 general tests, typecheck, build, and diff check pass. See [Round 29](red-team/ROUND-29-CONCURRENT-ROOM-WRITES.md).
 - **Test-model correction:** The first harness run lacked the schema's unique `(room_id, revision)` constraint and produced a false duplicate-event signal. The fixture now installs that index before the authoritative before/after run.
 - **Limits:** Minimal local D1 schema, mocked Gemini, no production database/workerd/browser. Retry messaging in a deployed browser remains unverified.
+
+## October 16, 2026 — empty AI suggestion and concurrent room write
+
+- **Used:** Personal `concurrency-reasoning` and `falsifiable-testing` to hold the empty-proposal acceptance at its write boundary while another participant advances the room; `invariant-hunting` to verify that a no-op suggestion cannot be marked accepted against a stale revision.
+- **Observed:** The guarded status update reports 409 and leaves the empty proposal pending. The R29 fix covers the no-event branch; no further code change was needed. See [Round 30](red-team/ROUND-30-EMPTY-CANDIDATE-ACCEPTANCE.md).
+- **Verification:** Fifteen actual-Worker/local-Wrangler-D1 integration tests pass. Gemini remains mocked; no production D1 or browser was used.

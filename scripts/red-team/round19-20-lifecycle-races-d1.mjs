@@ -914,3 +914,60 @@ it('turns a stale shared room mutation into 409 without a duplicate revision eve
     }
   }
 });
+
+it('does not claim an empty AI proposal was accepted after its base revision changes', async () => {
+  proxy ??= await proxyPromise;
+  const db = proxy.env.DB;
+  const allow = { limit: async () => ({ success: true }) };
+  const env = { ...proxy.env, DB: db, ASSETS: { fetch: async () => new Response(null, { status: 404 }) }, ROOM_CREATE_LIMITER: allow };
+  let created;
+  let releaseUpdate;
+  let signalUpdate;
+  let entered = false;
+  const updateReached = new Promise((resolve) => { signalUpdate = resolve; });
+  const updateGate = new Promise((resolve) => { releaseUpdate = resolve; });
+  try {
+    const create = await worker.fetch(new Request('https://aporia.test/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.32' }, body: JSON.stringify({ title: 'R32 empty AI result', displayName: 'R32 owner' }) }), env);
+    expect(create.status).toBe(200);
+    created = await create.json();
+    vi.spyOn(GeminiProvider.prototype, 'propose').mockResolvedValue({ candidates: [], warnings: ['no concrete candidates'], provider: { name: 'gemini', model: 'synthetic-model' } });
+    const discovery = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/candidate-discovery`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ expectedRevision: 1, idempotencyKey: 'r32-discovery' }) }), env);
+    expect(discovery.status).toBe(200);
+    const { proposal } = await discovery.json();
+    const gatedDb = new Proxy(db, { get(target, property) {
+      if (property !== 'prepare') {
+        const value = Reflect.get(target, property, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      }
+      return (sql) => {
+        const statement = target.prepare(sql);
+        if (!String(sql).startsWith('UPDATE candidate_proposals SET status = ?')) return statement;
+        return { bind: (...values) => {
+          const bound = statement.bind(...values);
+          return { run: async (...args) => {
+            if (!entered) { entered = true; signalUpdate(); await updateGate; }
+            return bound.run(...args);
+          } };
+        } };
+      };
+    } });
+    const accept = worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/candidate-discovery/${proposal.id}/accept`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ expectedRevision: 1, idempotencyKey: 'r32-accept' }) }), { ...env, DB: gatedDb });
+    await updateReached;
+    const competingWrite = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/candidates`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ title: 'Participant option', weekday: 6, startMinute: 1080, endMinute: 1200, priceCents: null, currency: 'ARS', area: null, expectedRevision: 1 }) }), env);
+    expect(competingWrite.status).toBe(200);
+    releaseUpdate();
+    const acceptResponse = await accept;
+    expect(acceptResponse.status).toBe(409);
+    expect((await db.prepare('SELECT status FROM candidate_proposals WHERE id = ?').bind(proposal.id).first()).status).toBe('pending');
+  } finally {
+    releaseUpdate?.();
+    vi.restoreAllMocks();
+    if (created?.roomId) {
+      await db.prepare('DELETE FROM candidate_proposals WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM events WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM sessions WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM participants WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM rooms WHERE id = ?').bind(created.roomId).run();
+    }
+  }
+});
