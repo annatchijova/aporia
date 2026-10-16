@@ -340,7 +340,7 @@ async function confirmClaim(env: Env, request: Request, roomId: string, proposal
     return json({ error: 'participantId must belong to this room' }, 400);
   }
   const duplicate = snapshot.facts.some((fact) => fact.participantId === participantId && fact.kind === claim.kind && canonicalize(fact.value) === canonicalize(claim.value));
-  const decision = (revision: number, requirePriorEvent = false) => env.DB.prepare(`INSERT INTO proposal_claim_decisions (proposal_id, claim_id, decision, created_at)
+  const decision = (revision: number, requirePriorEvent = false) => env.DB.prepare(`INSERT OR IGNORE INTO proposal_claim_decisions (proposal_id, claim_id, decision, created_at)
     SELECT ?, ?, ?, ? WHERE ${requirePriorEvent ? 'changes() = 1 AND ' : ''}EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(proposalId, claim.id, duplicate ? 'duplicate' : 'confirmed', now(), roomId, revision);
   const proposalUpdate = (revision: number) => env.DB.prepare(`UPDATE proposals SET status = 'confirmed' WHERE id = ? AND status = 'pending' AND
     (SELECT COUNT(*) FROM proposal_claim_decisions WHERE proposal_id = ? AND decision IN ('confirmed', 'duplicate')) >= ?

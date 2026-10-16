@@ -359,3 +359,10 @@ This log records how the official Build With AI: Basics skills are used in this 
 - **Used:** Personal `concurrency-reasoning` and `falsifiable-testing` to hold the empty-proposal acceptance at its write boundary while another participant advances the room; `invariant-hunting` to verify that a no-op suggestion cannot be marked accepted against a stale revision.
 - **Observed:** The guarded status update reports 409 and leaves the empty proposal pending. The R29 fix covers the no-event branch; no further code change was needed. See [Round 30](red-team/ROUND-30-EMPTY-CANDIDATE-ACCEPTANCE.md).
 - **Verification:** Fifteen actual-Worker/local-Wrangler-D1 integration tests pass. Gemini remains mocked; no production D1 or browser was used.
+
+## October 16, 2026 — duplicate claim review from two tabs
+
+- **Used:** Personal `concurrency-reasoning` to synchronize two duplicate-review requests after their prior-decision reads; `atomic-state-mutation` to preserve one decision and one proposal completion; `falsifiable-testing` and `variant-analysis` to compare ordinary fact confirmation with the duplicate/no-revision branch.
+- **Finding/fix:** Before the fix, the losing request hit the unique decision key and returned 400. Decision insertion now ignores an already-existing key, letting the route report 409 while retaining one stored decision.
+- **Evidence:** The actual Worker/local Wrangler D1 run returns 200/409, records one decision, confirms the proposal once, and leaves room revision/facts unchanged. Sixteen D1 tests pass; see [Round 31](red-team/ROUND-31-DUPLICATE-CLAIM-REVIEW-RACE.md).
+- **Limits:** Synthetic data and mocked Gemini; no browser, production D1, or deployed Worker.

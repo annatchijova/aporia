@@ -971,3 +971,64 @@ it('does not claim an empty AI proposal was accepted after its base revision cha
     }
   }
 });
+
+it('keeps duplicate-claim double confirmation to one decision without an unhandled D1 error', async () => {
+  proxy ??= await proxyPromise;
+  const db = proxy.env.DB;
+  const allow = { limit: async () => ({ success: true }) };
+  const env = { ...proxy.env, DB: db, ASSETS: { fetch: async () => new Response(null, { status: 404 }) }, ROOM_CREATE_LIMITER: allow };
+  let created;
+  let releaseBatches;
+  let signalBoth;
+  let waiting = 0;
+  const bothReached = new Promise((resolve) => { signalBoth = resolve; });
+  const batchGate = new Promise((resolve) => { releaseBatches = resolve; });
+  try {
+    const create = await worker.fetch(new Request('https://aporia.test/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.33' }, body: JSON.stringify({ title: 'R33 duplicate confirmation', displayName: 'R33 owner' }) }), env);
+    expect(create.status).toBe(200);
+    created = await create.json();
+    vi.spyOn(GeminiProvider.prototype, 'extract').mockImplementation(async ({ artifact }) => {
+      const id = artifact.content === 'first evidence' ? 'r33-first-proposal' : 'r33-duplicate-proposal';
+      const claimId = artifact.content === 'first evidence' ? 'r33-first-claim' : 'r33-duplicate-claim';
+      return { id, artifact, claims: [{ id: claimId, kind: 'proposal', participantId: created.participantId, value: { text: 'Same agreed plan' }, sourceText: artifact.content, confidence: 'high', ambiguity: [] }], warnings: [], provider: { name: 'gemini', model: 'synthetic-model' }, status: 'pending' };
+    });
+    const submitProposal = async (content) => worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/proposals`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ kind: 'text', content }) }), env);
+    const firstSubmit = await submitProposal('first evidence');
+    expect(firstSubmit.status).toBe(200);
+    const firstConfirm = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/proposals/r33-first-proposal/confirm`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ claimId: 'r33-first-claim', participantId: created.participantId, expectedRevision: 1 }) }), env);
+    expect(firstConfirm.status).toBe(200);
+    const duplicateSubmit = await submitProposal('duplicate evidence');
+    expect(duplicateSubmit.status).toBe(200);
+
+    const gatedDb = new Proxy(db, { get(target, property) {
+      if (property === 'batch') return async (statements) => {
+        waiting += 1;
+        if (waiting === 2) signalBoth();
+        await batchGate;
+        return target.batch(statements);
+      };
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } });
+    const confirmDuplicate = () => worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/proposals/r33-duplicate-proposal/confirm`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ claimId: 'r33-duplicate-claim', participantId: created.participantId, expectedRevision: 2 }) }), { ...env, DB: gatedDb });
+    const confirmations = [confirmDuplicate(), confirmDuplicate()];
+    await bothReached;
+    releaseBatches();
+    const responses = await Promise.all(confirmations);
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+    expect(await db.prepare('SELECT COUNT(*) as count FROM proposal_claim_decisions WHERE proposal_id = ?').bind('r33-duplicate-proposal').first().then((row) => row.count)).toBe(1);
+    expect((await db.prepare('SELECT status FROM proposals WHERE id = ?').bind('r33-duplicate-proposal').first()).status).toBe('confirmed');
+    expect((await db.prepare('SELECT revision FROM rooms WHERE id = ?').bind(created.roomId).first()).revision).toBe(2);
+  } finally {
+    releaseBatches?.();
+    vi.restoreAllMocks();
+    if (created?.roomId) {
+      await db.prepare('DELETE FROM proposal_claim_decisions WHERE proposal_id IN (SELECT id FROM proposals WHERE room_id = ?)').bind(created.roomId).run();
+      await db.prepare('DELETE FROM proposals WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM events WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM sessions WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM participants WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM rooms WHERE id = ?').bind(created.roomId).run();
+    }
+  }
+});
