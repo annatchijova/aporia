@@ -303,3 +303,10 @@ This log records how the official Build With AI: Basics skills are used in this 
 - **Finding and fix:** Two concurrent links produced HTTP 200/409 while both tokens were consumed and two creator sessions were inserted. Recovery's token-consumption update now requires `changes() = 1` from the immediately preceding room-state update, making the side effect conditional on that request winning the transition.
 - **Induction:** The regression failed before the fix with two consumed tokens instead of one; the pre-fix controlled run confirmed two sessions as well. After the fix, the actual Worker against local Wrangler D1 produced one 200, one 409, one consumed token, and one session. The synthetic recovery adapter was updated to model the same SQLite `changes()` gate. See [Round 22](red-team/ROUND-22-DISTINCT-RECOVERY-LINK-RACE.md).
 - **Limits:** This exercises two different recovery links with an explicit pre-batch barrier and minimal local D1 schema. Login-link sessions are separate and unchanged. No production database or deployed Worker was used.
+
+## October 16, 2026 — overlapping scheduled room purges
+
+- **Used:** Personal `concurrency-reasoning` and `atomic-state-mutation` to model two scheduled invocations selecting the same expired room; `red-team-auditing` and `falsifiable-testing` to force both reads before either cleanup batch and verify all dependent rows afterward.
+- **Finding/disposition:** Both invocations selected the same expired room and completed. The first deleted it; the second found the guarded child/parent delete predicates no longer matched. D1 contained no parent or dependent rows, creator credentials, or orphaned account afterward. No code change was warranted for this ordering.
+- **Verification:** Five dedicated local D1 integration tests now pass, including the forced purge overlap using actual Worker `scheduled` handlers. See [Round 23](red-team/ROUND-23-OVERLAPPING-SCHEDULED-PURGES.md).
+- **Limits:** Minimal synthetic lifecycle schema, local Wrangler D1, and direct Worker handler invocation only; no full migration replay, live Cloudflare scheduler, production D1, or workerd deployment.

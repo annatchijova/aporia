@@ -236,3 +236,90 @@ it('does not consume a second recovery link or create a session after another li
   await db.prepare('DELETE FROM creator_auth_tokens WHERE room_id = ?').bind(roomId).run();
   await db.prepare(`UPDATE rooms SET status = 'closed', deleted_at = NULL, recovery_until = NULL, recovery_snapshot_json = NULL WHERE id = ?`).bind(roomId).run();
 });
+
+it('allows two scheduled purges that selected the same expired room to overlap safely', async () => {
+  const db = proxy.env.DB;
+  const now = new Date().toISOString();
+  await db.prepare('DELETE FROM creator_sessions').run();
+  await db.prepare('DELETE FROM creator_auth_tokens').run();
+  await db.prepare('DELETE FROM room_messages WHERE room_id = ?').bind(roomId).run();
+  await db.prepare('DELETE FROM proposal_claim_decisions WHERE proposal_id IN (SELECT id FROM proposals WHERE room_id = ?)').bind(roomId).run();
+  await db.prepare('DELETE FROM proposals WHERE room_id = ?').bind(roomId).run();
+  await db.prepare('DELETE FROM candidate_proposals WHERE room_id = ?').bind(roomId).run();
+  await db.prepare('DELETE FROM candidates WHERE room_id = ?').bind(roomId).run();
+  await db.prepare('DELETE FROM events WHERE room_id = ?').bind(roomId).run();
+  await db.prepare('DELETE FROM sessions WHERE room_id = ?').bind(roomId).run();
+  await db.prepare('DELETE FROM participants WHERE room_id = ?').bind(roomId).run();
+  await db.prepare('DELETE FROM rooms WHERE id = ?').bind(roomId).run();
+  await db.prepare('DELETE FROM creator_accounts WHERE id = ?').bind(accountId).run();
+  await db.prepare('INSERT INTO creator_accounts (id, email, created_at) VALUES (?, ?, ?)').bind(accountId, ownerEmail, now).run();
+  await db.prepare(`INSERT INTO rooms (id, title, revision, snapshot_json, created_at, status, creator_account_id, deleted_at, recovery_until, recovery_snapshot_json)
+    VALUES (?, 'Expired room', 1, '{}', ?, 'trashed', ?, ?, ?, '{}')`).bind(roomId, now, accountId, now, new Date(Date.now() - 1_000).toISOString()).run();
+  await db.prepare(`INSERT INTO participants (id, room_id, display_name, created_at) VALUES ('r23-participant', ?, 'Synthetic person', ?)`).bind(roomId, now).run();
+  await db.prepare(`INSERT INTO sessions (token_hash, room_id, participant_id, created_at) VALUES ('r23-session', ?, 'r23-participant', ?)`).bind(roomId, now).run();
+  await db.prepare(`INSERT INTO events (id, room_id, revision, actor_id, event_type, payload_json, created_at) VALUES ('r23-event', ?, 1, 'r23-participant', 'test', '{}', ?)`).bind(roomId, now).run();
+  await db.prepare(`INSERT INTO proposals (id, room_id, artifact_json, claims_json, provider_json, status, created_at) VALUES ('r23-proposal', ?, '{}', '[]', '{}', 'accepted', ?)`).bind(roomId, now).run();
+  await db.prepare(`INSERT INTO proposal_claim_decisions (proposal_id, claim_id, decision, created_at) VALUES ('r23-proposal', 'r23-claim', 'confirmed', ?)`).bind(now).run();
+  await db.prepare(`INSERT INTO candidates (id, room_id, candidate_json, created_at) VALUES ('r23-candidate', ?, '{}', ?)`).bind(roomId, now).run();
+  await db.prepare(`INSERT INTO candidate_proposals (id, room_id, base_revision, idempotency_key, drafts_json, provider_json, warnings_json, status, created_at) VALUES ('r23-candidate-proposal', ?, 1, 'r23-key', '[]', '{}', '[]', 'pending', ?)`).bind(roomId, now).run();
+  await db.prepare(`INSERT INTO room_messages (id, room_id, participant_id, body, idempotency_key, created_at) VALUES ('r23-message', ?, 'r23-participant', 'synthetic', 'r23-message-key', ?)`).bind(roomId, now).run();
+  await db.prepare(`INSERT INTO creator_auth_tokens (token_hash, email, room_id, purpose, created_at, expires_at) VALUES ('r23-token', ?, ?, 'recover', ?, ?)`)
+    .bind(ownerEmail, roomId, now, new Date(Date.now() - 1_000).toISOString()).run();
+  await db.prepare(`INSERT INTO creator_sessions (token_hash, account_id, created_at, expires_at) VALUES ('r23-creator-session', ?, ?, ?)`)
+    .bind(accountId, now, new Date(Date.now() - 1_000).toISOString()).run();
+
+  let selections = 0;
+  let releaseSelections;
+  let reportSelections;
+  const bothSelected = new Promise((resolve) => { reportSelections = resolve; });
+  const selectionsReleased = new Promise((resolve) => { releaseSelections = resolve; });
+  const wrappedDb = new Proxy(db, { get(target, property) {
+    if (property === 'prepare') return (sql) => {
+      const statement = target.prepare(sql);
+      if (!sql.startsWith("SELECT id FROM rooms WHERE status = 'trashed' AND recovery_until <= ?")) return statement;
+      return new Proxy(statement, { get(prepared, preparedProperty) {
+        const method = Reflect.get(prepared, preparedProperty, prepared);
+        if (preparedProperty !== 'bind') return typeof method === 'function' ? method.bind(prepared) : method;
+        return (...values) => {
+          const bound = method.apply(prepared, values);
+          return new Proxy(bound, { get(boundStatement, boundProperty) {
+            const boundMethod = Reflect.get(boundStatement, boundProperty, boundStatement);
+            if (boundProperty !== 'all') return typeof boundMethod === 'function' ? boundMethod.bind(boundStatement) : boundMethod;
+            return async (...args) => {
+              const result = await boundMethod.apply(boundStatement, args);
+              selections++;
+              if (selections === 2) reportSelections();
+              await selectionsReleased;
+              return result;
+            };
+          } });
+        };
+      } });
+    };
+    const value = Reflect.get(target, property, target);
+    return typeof value === 'function' ? value.bind(target) : value;
+  } });
+  const env = { ...proxy.env, DB: wrappedDb };
+  const controller = { scheduledTime: Date.now(), cron: '0 * * * *' };
+  const purges = [worker.scheduled(controller, env), worker.scheduled(controller, env)];
+  await bothSelected;
+  releaseSelections();
+  await Promise.all(purges);
+
+  const room = await db.prepare('SELECT id FROM rooms WHERE id = ?').bind(roomId).first();
+  const children = await Promise.all([
+    db.prepare('SELECT COUNT(*) as count FROM room_messages WHERE room_id = ?').bind(roomId).first(),
+    db.prepare('SELECT COUNT(*) as count FROM proposal_claim_decisions WHERE proposal_id = ?').bind('r23-proposal').first(),
+    db.prepare('SELECT COUNT(*) as count FROM proposals WHERE room_id = ?').bind(roomId).first(),
+    db.prepare('SELECT COUNT(*) as count FROM candidate_proposals WHERE room_id = ?').bind(roomId).first(),
+    db.prepare('SELECT COUNT(*) as count FROM candidates WHERE room_id = ?').bind(roomId).first(),
+    db.prepare('SELECT COUNT(*) as count FROM events WHERE room_id = ?').bind(roomId).first(),
+    db.prepare('SELECT COUNT(*) as count FROM sessions WHERE room_id = ?').bind(roomId).first(),
+    db.prepare('SELECT COUNT(*) as count FROM participants WHERE room_id = ?').bind(roomId).first(),
+    db.prepare('SELECT COUNT(*) as count FROM creator_auth_tokens WHERE room_id = ?').bind(roomId).first(),
+    db.prepare('SELECT COUNT(*) as count FROM creator_sessions WHERE account_id = ?').bind(accountId).first(),
+  ]);
+  expect(room).toBeNull();
+  expect(children.map((result) => result.count)).toEqual(Array(10).fill(0));
+  expect(await db.prepare('SELECT id FROM creator_accounts WHERE id = ?').bind(accountId).first()).toBeNull();
+});
