@@ -183,3 +183,56 @@ it('keeps a possibly delivered link from a failed attempt shorter than a later t
     await db.prepare("UPDATE rooms SET status = 'closed', deleted_at = NULL, recovery_until = NULL, recovery_snapshot_json = NULL WHERE id = ?").bind(roomId).run();
   }
 });
+
+it('does not consume a second recovery link or create a session after another link wins', async () => {
+  const db = proxy.env.DB;
+  const now = new Date().toISOString();
+  const recoveryUntil = new Date(Date.now() + 86_400_000).toISOString();
+  const recovery = JSON.stringify({ title: 'Recovered room', candidates: [], nextMeetingCode: null, registeredCount: 0, attendedCount: null });
+  const rawTokens = ['synthetic-r22-recovery-link-one-token-valid', 'synthetic-r22-recovery-link-two-token-valid'];
+  const hashes = await Promise.all(rawTokens.map(digest));
+  await db.prepare('DELETE FROM creator_sessions WHERE account_id = ?').bind(accountId).run();
+  await db.prepare('DELETE FROM creator_auth_tokens WHERE room_id = ?').bind(roomId).run();
+  await db.prepare(`UPDATE rooms SET title = 'Deleted room', snapshot_json = ?, revision = 1, meeting_code = NULL, status = 'trashed', deleted_at = ?, recovery_until = ?, recovery_snapshot_json = ?, creator_account_id = ? WHERE id = ?`)
+    .bind(JSON.stringify({ roomId, title: 'Deleted room', revision: 1, candidates: [], participants: [], facts: [], constraints: [], preferences: [], recoverySummary: { registeredCount: 0, attendedCount: null, nextMeetingCode: null } }), now, recoveryUntil, recovery, accountId, roomId).run();
+  for (let index = 0; index < hashes.length; index++) {
+    await db.prepare(`INSERT INTO creator_auth_tokens (token_hash, email, room_id, purpose, created_at, expires_at) VALUES (?, ?, ?, 'recover', ?, ?)`)
+      .bind(hashes[index], ownerEmail, roomId, now, recoveryUntil).run();
+  }
+
+  let batches = 0;
+  let releaseBatches;
+  let reportBatches;
+  const bothAtBatch = new Promise((resolve) => { reportBatches = resolve; });
+  const batchesReleased = new Promise((resolve) => { releaseBatches = resolve; });
+  const wrappedDb = new Proxy(db, { get(target, property) {
+    if (property === 'batch') return async (statements) => {
+      batches++;
+      if (batches === 2) reportBatches();
+      await batchesReleased;
+      return target.batch(statements);
+    };
+    const value = Reflect.get(target, property, target);
+    return typeof value === 'function' ? value.bind(target) : value;
+  } });
+  const env = { ...proxy.env, DB: wrappedDb };
+  const consume = (token) => worker.fetch(new Request('https://aporia.test/api/creator-links/consume', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }),
+  }), env);
+  const requests = rawTokens.map(consume);
+  await bothAtBatch;
+  releaseBatches();
+  const responses = await Promise.all(requests);
+  const statuses = await Promise.all(responses.map((response) => response.status));
+  const room = await db.prepare('SELECT status FROM rooms WHERE id = ?').bind(roomId).first();
+  const tokens = await db.prepare('SELECT used_at as usedAt FROM creator_auth_tokens WHERE room_id = ? AND purpose = ?').bind(roomId, 'recover').all();
+  const sessions = await db.prepare('SELECT COUNT(*) as count FROM creator_sessions WHERE account_id = ?').bind(accountId).first();
+  expect(statuses.sort()).toEqual([200, 409]);
+  expect(room.status).toBe('recovered_read_only');
+  expect(tokens.results.filter((token) => token.usedAt !== null)).toHaveLength(1);
+  expect(sessions.count).toBe(1);
+
+  await db.prepare('DELETE FROM creator_sessions WHERE account_id = ?').bind(accountId).run();
+  await db.prepare('DELETE FROM creator_auth_tokens WHERE room_id = ?').bind(roomId).run();
+  await db.prepare(`UPDATE rooms SET status = 'closed', deleted_at = NULL, recovery_until = NULL, recovery_snapshot_json = NULL WHERE id = ?`).bind(roomId).run();
+});

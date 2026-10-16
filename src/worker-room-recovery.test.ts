@@ -104,6 +104,7 @@ async function syntheticDb() {
       return { meta: { changes: 1 } };
     }
     if (sql.startsWith('UPDATE creator_auth_tokens SET used_at')) {
+      if (sql.includes('changes() = 1') && previousChanges !== 1) return { meta: { changes: 0 } };
       const token = state.authTokens.get(String(values[1]));
       if (!token || token.usedAt) return { meta: { changes: 0 } };
       token.usedAt = String(values[0]);
