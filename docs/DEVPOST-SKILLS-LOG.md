@@ -339,3 +339,9 @@ This log records how the official Build With AI: Basics skills are used in this 
 - **Observed/disposition:** A confirmed proposal is absent from the pending list, but its source artifact and extracted `sourceText` remain in D1 while the room is closed. Candidate proposals remain too. Close blocks proposal reads; reopen deletes the proposals, decisions, candidate proposals, sessions, participants, events, and messages while preserving a sanitized summary. No code defect was confirmed, so no data-retention behavior was changed.
 - **Decision boundary:** Round 9 already records that erasing source text immediately after review changes traceability behavior and awaits product direction. The existing choice to retain event contributions until room cleanup was respected; provider, backup, and log copies remain outside this local test's evidence. See [Round 27](red-team/ROUND-27-AI-EVIDENCE-LIFECYCLE.md).
 - **Verification:** R27 adds a local Wrangler D1 lifecycle regression using synthetic text and candidate data plus mocked Gemini. Rerun the complete checks before commit.
+
+## October 16, 2026 — confirmation racing room close
+
+- **Used:** Personal `concurrency-reasoning` to force both operation orders around the D1 commit; `atomic-state-mutation` to verify room snapshot, event, decision, and proposal status remain coherent; `invariant-hunting` and `red-team-auditing` to check the close boundary; `falsifiable-testing` to retain the forced local D1 barrier.
+- **Observed:** When close commits before confirmation's D1 batch, confirmation returns 409 and no fact, event, or decision is written. When confirmation commits first, close preserves its fact. No code change was warranted.
+- **Verification:** Eleven dedicated local D1 tests pass, along with 37 general tests, typecheck/build, and diff check. R28 uses actual Worker handlers and a minimal synthetic D1 schema; see [Round 28](red-team/ROUND-28-CONFIRM-CLOSE-RACE.md).

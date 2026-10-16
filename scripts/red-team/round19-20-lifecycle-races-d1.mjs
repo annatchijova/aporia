@@ -644,3 +644,117 @@ it('keeps AI contribution evidence through close and removes both AI queues on r
     }
   }
 });
+
+it('does not commit a claim when room close wins after review prechecks', async () => {
+  proxy ??= await proxyPromise;
+  const db = proxy.env.DB;
+  const allow = { limit: async () => ({ success: true }) };
+  const env = { ...proxy.env, DB: db, ASSETS: { fetch: async () => new Response(null, { status: 404 }) }, ROOM_CREATE_LIMITER: allow };
+  const creator = 'r28-creator-session';
+  let created;
+  let accountId;
+  let releaseBatch;
+  let signalBatch;
+  let entered = false;
+  const batchReached = new Promise((resolve) => { signalBatch = resolve; });
+  const batchGate = new Promise((resolve) => { releaseBatch = resolve; });
+  try {
+    const create = await worker.fetch(new Request('https://aporia.test/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.28' }, body: JSON.stringify({ title: 'R28 review race', displayName: 'R28 owner' }) }), env);
+    expect(create.status).toBe(200);
+    created = await create.json();
+    const proposal = { id: 'r28-proposal', artifact: { id: 'r28-artifact', kind: 'text', content: 'Saturday works', contentHash: 'synthetic', createdAt: new Date().toISOString(), participantId: created.participantId }, claims: [{ id: 'r28-claim', kind: 'proposal', participantId: created.participantId, value: { text: 'Saturday works' }, sourceText: 'Saturday works', confidence: 'high', ambiguity: [] }], warnings: [], provider: { name: 'gemini', model: 'synthetic-model' }, status: 'pending' };
+    vi.spyOn(GeminiProvider.prototype, 'extract').mockResolvedValue(proposal);
+    const submit = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/proposals`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ kind: 'text', content: proposal.artifact.content }) }), env);
+    expect(submit.status).toBe(200);
+    accountId = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+    await db.prepare('INSERT INTO creator_accounts (id, email, created_at) VALUES (?, ?, ?)').bind(accountId, 'r28-owner@example.test', timestamp).run();
+    await db.prepare('UPDATE rooms SET creator_account_id = ? WHERE id = ?').bind(accountId, created.roomId).run();
+    await db.prepare('INSERT INTO creator_sessions (token_hash, account_id, created_at, expires_at) VALUES (?, ?, ?, ?)').bind(digest(creator), accountId, timestamp, new Date(Date.now() + 86_400_000).toISOString()).run();
+
+    let armed = true;
+    const gatedDb = new Proxy(db, { get(target, property) {
+      if (property === 'batch') return async (statements) => {
+        if (armed && !entered) { entered = true; signalBatch(); await batchGate; }
+        return target.batch(statements);
+      };
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } });
+    const roomPath = `https://aporia.test/api/rooms/${created.roomId}`;
+    const confirming = worker.fetch(new Request(`${roomPath}/proposals/${proposal.id}/confirm`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ claimId: 'r28-claim', participantId: created.participantId, expectedRevision: 1 }) }), { ...env, DB: gatedDb });
+    await batchReached;
+    const close = await worker.fetch(new Request(`${roomPath}/close`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creator }, body: '{}' }), env);
+    expect(close.status).toBe(200);
+    releaseBatch();
+    const confirm = await confirming;
+    expect(confirm.status).toBe(409);
+    const storedRoom = await db.prepare('SELECT status, snapshot_json as snapshot FROM rooms WHERE id = ?').bind(created.roomId).first();
+    expect(storedRoom.status).toBe('closed');
+    expect(JSON.parse(storedRoom.snapshot).facts).toEqual([]);
+    expect(await db.prepare('SELECT COUNT(*) as count FROM proposal_claim_decisions WHERE proposal_id = ?').bind(proposal.id).first().then((row) => row.count)).toBe(0);
+    expect((await db.prepare('SELECT status FROM proposals WHERE id = ?').bind(proposal.id).first()).status).toBe('pending');
+  } finally {
+    releaseBatch?.();
+    vi.restoreAllMocks();
+    if (created?.roomId) {
+      await db.prepare('DELETE FROM proposal_claim_decisions WHERE proposal_id IN (SELECT id FROM proposals WHERE room_id = ?)').bind(created.roomId).run();
+      await db.prepare('DELETE FROM proposals WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM events WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM sessions WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM participants WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM rooms WHERE id = ?').bind(created.roomId).run();
+    }
+    if (accountId) {
+      await db.prepare('DELETE FROM creator_sessions WHERE account_id = ?').bind(accountId).run();
+      await db.prepare('DELETE FROM creator_accounts WHERE id = ?').bind(accountId).run();
+    }
+  }
+});
+
+it('keeps a confirmed fact when claim review wins immediately before room close', async () => {
+  proxy ??= await proxyPromise;
+  const db = proxy.env.DB;
+  const allow = { limit: async () => ({ success: true }) };
+  const env = { ...proxy.env, DB: db, ASSETS: { fetch: async () => new Response(null, { status: 404 }) }, ROOM_CREATE_LIMITER: allow };
+  const creator = 'r28b-creator-session';
+  let created;
+  let accountId;
+  try {
+    const create = await worker.fetch(new Request('https://aporia.test/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.28' }, body: JSON.stringify({ title: 'R28b review then close', displayName: 'R28b owner' }) }), env);
+    expect(create.status).toBe(200);
+    created = await create.json();
+    const proposal = { id: 'r28b-proposal', artifact: { id: 'r28b-artifact', kind: 'text', content: 'Sunday works', contentHash: 'synthetic', createdAt: new Date().toISOString(), participantId: created.participantId }, claims: [{ id: 'r28b-claim', kind: 'proposal', participantId: created.participantId, value: { text: 'Sunday works' }, sourceText: 'Sunday works', confidence: 'high', ambiguity: [] }], warnings: [], provider: { name: 'gemini', model: 'synthetic-model' }, status: 'pending' };
+    vi.spyOn(GeminiProvider.prototype, 'extract').mockResolvedValue(proposal);
+    const submit = await worker.fetch(new Request(`https://aporia.test/api/rooms/${created.roomId}/proposals`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ kind: 'text', content: proposal.artifact.content }) }), env);
+    expect(submit.status).toBe(200);
+    accountId = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+    await db.prepare('INSERT INTO creator_accounts (id, email, created_at) VALUES (?, ?, ?)').bind(accountId, 'r28b-owner@example.test', timestamp).run();
+    await db.prepare('UPDATE rooms SET creator_account_id = ? WHERE id = ?').bind(accountId, created.roomId).run();
+    await db.prepare('INSERT INTO creator_sessions (token_hash, account_id, created_at, expires_at) VALUES (?, ?, ?, ?)').bind(digest(creator), accountId, timestamp, new Date(Date.now() + 86_400_000).toISOString()).run();
+    const roomPath = `https://aporia.test/api/rooms/${created.roomId}`;
+    const confirm = await worker.fetch(new Request(`${roomPath}/proposals/${proposal.id}/confirm`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ claimId: 'r28b-claim', participantId: created.participantId, expectedRevision: 1 }) }), env);
+    expect(confirm.status).toBe(200);
+    const close = await worker.fetch(new Request(`${roomPath}/close`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creator }, body: '{}' }), env);
+    expect(close.status).toBe(200);
+    const stored = await db.prepare('SELECT status, snapshot_json as snapshot FROM rooms WHERE id = ?').bind(created.roomId).first();
+    expect(stored.status).toBe('closed');
+    expect(JSON.parse(stored.snapshot).facts.map((fact) => fact.value.text)).toEqual(['Sunday works']);
+    expect((await db.prepare('SELECT status FROM proposals WHERE id = ?').bind(proposal.id).first()).status).toBe('confirmed');
+  } finally {
+    vi.restoreAllMocks();
+    if (created?.roomId) {
+      await db.prepare('DELETE FROM proposal_claim_decisions WHERE proposal_id IN (SELECT id FROM proposals WHERE room_id = ?)').bind(created.roomId).run();
+      await db.prepare('DELETE FROM proposals WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM events WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM sessions WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM participants WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM rooms WHERE id = ?').bind(created.roomId).run();
+    }
+    if (accountId) {
+      await db.prepare('DELETE FROM creator_sessions WHERE account_id = ?').bind(accountId).run();
+      await db.prepare('DELETE FROM creator_accounts WHERE id = ?').bind(accountId).run();
+    }
+  }
+});
