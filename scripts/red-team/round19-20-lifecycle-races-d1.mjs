@@ -1230,3 +1230,211 @@ it('reclaims a stale candidate-discovery reservation after a worker interruption
     }
   }
 });
+
+it('does not resurrect an in-flight AI suggestion after close, reopen, and deletion', async () => {
+  proxy ??= await proxyPromise;
+  const db = proxy.env.DB;
+  const allow = { limit: async () => ({ success: true }) };
+  const creator = 'r39-lifecycle-creator-session';
+  const env = {
+    ...proxy.env, DB: db, ASSETS: { fetch: async () => new Response(null, { status: 404 }) },
+    ROOM_CREATE_LIMITER: allow, AI_DISCOVERY_LIMITER: allow,
+    RESEND_API_KEY: 'synthetic-only', CREATOR_EMAIL_FROM: 'no-reply@example.test', APORIA_APP_ORIGIN: 'https://aporia.test',
+  };
+  let created;
+  let accountId;
+  let releaseProvider;
+  let signalProvider;
+  const providerStarted = new Promise((resolve) => { signalProvider = resolve; });
+  const providerGate = new Promise((resolve) => { releaseProvider = resolve; });
+  const fetchStub = vi.fn(async () => new Response(JSON.stringify({ id: 'synthetic-r39-email' }), { status: 200 }));
+  try {
+    const create = await worker.fetch(new Request('https://aporia.test/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.39' }, body: JSON.stringify({ title: 'R39 in-flight lifecycle', displayName: 'R39 owner' }) }), env);
+    expect(create.status).toBe(200);
+    created = await create.json();
+    accountId = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+    await db.prepare('INSERT INTO creator_accounts (id, email, created_at) VALUES (?, ?, ?)').bind(accountId, 'r39-owner@example.test', timestamp).run();
+    await db.prepare('UPDATE rooms SET creator_account_id = ? WHERE id = ?').bind(accountId, created.roomId).run();
+    await db.prepare('INSERT INTO creator_sessions (token_hash, account_id, created_at, expires_at) VALUES (?, ?, ?, ?)').bind(digest(creator), accountId, timestamp, new Date(Date.now() + 86_400_000).toISOString()).run();
+    vi.stubGlobal('fetch', fetchStub);
+    vi.spyOn(GeminiProvider.prototype, 'propose').mockImplementation(async () => {
+      signalProvider();
+      await providerGate;
+      return { candidates: [{ title: 'Synthetic private option', weekday: 6, startMinute: 1200, endMinute: 1320, priceCents: null, currency: null, area: 'synthetic private area' }], warnings: [], provider: { name: 'gemini', model: 'synthetic-model' } };
+    });
+    const roomPath = `https://aporia.test/api/rooms/${created.roomId}`;
+    const discovering = worker.fetch(new Request(`${roomPath}/candidate-discovery`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ expectedRevision: 1, idempotencyKey: 'r39-lifecycle-key' }) }), env);
+    await providerStarted;
+    expect((await db.prepare('SELECT status FROM candidate_proposals WHERE room_id = ? AND idempotency_key = ?').bind(created.roomId, 'r39-lifecycle-key').first()).status).toBe('processing');
+
+    const close = await worker.fetch(new Request(`${roomPath}/close`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creator }, body: '{}' }), env);
+    expect(close.status).toBe(200);
+    expect((await db.prepare('SELECT status FROM candidate_proposals WHERE room_id = ? AND idempotency_key = ?').bind(created.roomId, 'r39-lifecycle-key').first()).status).toBe('processing');
+
+    const reopen = await worker.fetch(new Request(`${roomPath}/reopen`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creator }, body: '{}' }), env);
+    expect(reopen.status).toBe(200);
+    expect(await db.prepare('SELECT COUNT(*) as count FROM candidate_proposals WHERE room_id = ?').bind(created.roomId).first().then((row) => row.count)).toBe(0);
+
+    const remove = await worker.fetch(new Request(`${roomPath}/delete`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creator }, body: '{}' }), env);
+    expect(remove.status).toBe(200);
+    expect((await db.prepare('SELECT status FROM rooms WHERE id = ?').bind(created.roomId).first()).status).toBe('trashed');
+    releaseProvider();
+    const lateResult = await discovering;
+    expect(lateResult.status).toBe(409);
+    expect((await lateResult.json()).error).toContain('room changed');
+    const afterCompletion = await Promise.all([
+      db.prepare('SELECT COUNT(*) as count FROM candidate_proposals WHERE room_id = ?').bind(created.roomId).first(),
+      db.prepare('SELECT recovery_snapshot_json as snapshot FROM rooms WHERE id = ?').bind(created.roomId).first(),
+    ]);
+    expect(afterCompletion[0].count).toBe(0);
+    expect(afterCompletion[1].snapshot).not.toContain('Synthetic private option');
+    expect(afterCompletion[1].snapshot).not.toContain('synthetic private area');
+    expect(fetchStub).toHaveBeenCalledTimes(1);
+  } finally {
+    releaseProvider?.();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    if (created?.roomId) {
+      await db.prepare('DELETE FROM creator_auth_tokens WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM proposal_claim_decisions WHERE proposal_id IN (SELECT id FROM proposals WHERE room_id = ?)').bind(created.roomId).run();
+      await db.prepare('DELETE FROM proposals WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM candidate_proposals WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM room_messages WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM events WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM sessions WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM participants WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM rooms WHERE id = ?').bind(created.roomId).run();
+    }
+    if (accountId) {
+      await db.prepare('DELETE FROM creator_sessions WHERE account_id = ?').bind(accountId).run();
+      await db.prepare('DELETE FROM creator_accounts WHERE id = ?').bind(accountId).run();
+    }
+  }
+});
+
+it('does not dispatch reserved Gemini work after room close, reopen, and deletion win first', async () => {
+  proxy ??= await proxyPromise;
+  const db = proxy.env.DB;
+  let releaseLimiter;
+  let signalLimiter;
+  const limiterEntered = new Promise((resolve) => { signalLimiter = resolve; });
+  const limiterGate = new Promise((resolve) => { releaseLimiter = resolve; });
+  const aiLimiter = { limit: async () => { signalLimiter(); await limiterGate; return { success: true }; } };
+  const creator = 'r40-lifecycle-before-provider-session';
+  const env = {
+    ...proxy.env, DB: db, ASSETS: { fetch: async () => new Response(null, { status: 404 }) },
+    ROOM_CREATE_LIMITER: { limit: async () => ({ success: true }) }, AI_DISCOVERY_LIMITER: aiLimiter,
+    RESEND_API_KEY: 'synthetic-only', CREATOR_EMAIL_FROM: 'no-reply@example.test', APORIA_APP_ORIGIN: 'https://aporia.test',
+  };
+  let created;
+  let accountId;
+  let providerCalls = 0;
+  const fetchStub = vi.fn(async () => new Response(JSON.stringify({ id: 'synthetic-r40-email' }), { status: 200 }));
+  try {
+    const create = await worker.fetch(new Request('https://aporia.test/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.40' }, body: JSON.stringify({ title: 'R40 dispatch authorization', displayName: 'R40 owner' }) }), env);
+    expect(create.status).toBe(200);
+    created = await create.json();
+    accountId = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+    await db.prepare('INSERT INTO creator_accounts (id, email, created_at) VALUES (?, ?, ?)').bind(accountId, 'r40-owner@example.test', timestamp).run();
+    await db.prepare('UPDATE rooms SET creator_account_id = ? WHERE id = ?').bind(accountId, created.roomId).run();
+    await db.prepare('INSERT INTO creator_sessions (token_hash, account_id, created_at, expires_at) VALUES (?, ?, ?, ?)').bind(digest(creator), accountId, timestamp, new Date(Date.now() + 86_400_000).toISOString()).run();
+    vi.stubGlobal('fetch', fetchStub);
+    vi.spyOn(GeminiProvider.prototype, 'propose').mockImplementation(async () => {
+      providerCalls++;
+      return { candidates: [], warnings: [], provider: { name: 'gemini', model: 'synthetic-model' } };
+    });
+    const roomPath = `https://aporia.test/api/rooms/${created.roomId}`;
+    const discovering = worker.fetch(new Request(`${roomPath}/candidate-discovery`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ expectedRevision: 1, idempotencyKey: 'r40-delete-before-provider-key' }) }), env);
+    await limiterEntered;
+    expect((await db.prepare('SELECT status FROM candidate_proposals WHERE room_id = ? AND idempotency_key = ?').bind(created.roomId, 'r40-delete-before-provider-key').first()).status).toBe('processing');
+
+    const close = await worker.fetch(new Request(`${roomPath}/close`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creator }, body: '{}' }), env);
+    expect(close.status).toBe(200);
+    const reopen = await worker.fetch(new Request(`${roomPath}/reopen`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creator }, body: '{}' }), env);
+    expect(reopen.status).toBe(200);
+    const remove = await worker.fetch(new Request(`${roomPath}/delete`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creator }, body: '{}' }), env);
+    expect(remove.status).toBe(200);
+
+    releaseLimiter();
+    const response = await discovering;
+    expect(response.status).toBe(409);
+    expect(providerCalls).toBe(0);
+    expect(await db.prepare('SELECT COUNT(*) as count FROM candidate_proposals WHERE room_id = ?').bind(created.roomId).first().then((row) => row.count)).toBe(0);
+  } finally {
+    releaseLimiter?.();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    if (created?.roomId) {
+      await db.prepare('DELETE FROM creator_auth_tokens WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM candidate_proposals WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM room_messages WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM events WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM sessions WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM participants WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM rooms WHERE id = ?').bind(created.roomId).run();
+    }
+    if (accountId) {
+      await db.prepare('DELETE FROM creator_sessions WHERE account_id = ?').bind(accountId).run();
+      await db.prepare('DELETE FROM creator_accounts WHERE id = ?').bind(accountId).run();
+    }
+  }
+});
+
+it('does not start contribution extraction when room close wins before provider dispatch', async () => {
+  proxy ??= await proxyPromise;
+  const db = proxy.env.DB;
+  let releaseLimiter;
+  let signalLimiter;
+  const limiterEntered = new Promise((resolve) => { signalLimiter = resolve; });
+  const limiterGate = new Promise((resolve) => { releaseLimiter = resolve; });
+  const aiLimiter = { limit: async () => { signalLimiter(); await limiterGate; return { success: true }; } };
+  const creator = 'r41-extraction-lifecycle-creator';
+  const env = {
+    ...proxy.env, DB: db, ASSETS: { fetch: async () => new Response(null, { status: 404 }) },
+    ROOM_CREATE_LIMITER: { limit: async () => ({ success: true }) }, AI_PROPOSAL_LIMITER: aiLimiter,
+  };
+  let created;
+  let accountId;
+  let providerCalls = 0;
+  try {
+    const create = await worker.fetch(new Request('https://aporia.test/api/rooms', { method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.41' }, body: JSON.stringify({ title: 'R41 extraction dispatch', displayName: 'R41 owner' }) }), env);
+    expect(create.status).toBe(200);
+    created = await create.json();
+    accountId = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+    await db.prepare('INSERT INTO creator_accounts (id, email, created_at) VALUES (?, ?, ?)').bind(accountId, 'r41-owner@example.test', timestamp).run();
+    await db.prepare('UPDATE rooms SET creator_account_id = ? WHERE id = ?').bind(accountId, created.roomId).run();
+    await db.prepare('INSERT INTO creator_sessions (token_hash, account_id, created_at, expires_at) VALUES (?, ?, ?, ?)').bind(digest(creator), accountId, timestamp, new Date(Date.now() + 86_400_000).toISOString()).run();
+    vi.spyOn(GeminiProvider.prototype, 'extract').mockImplementation(async ({ artifact }) => {
+      providerCalls++;
+      return { id: 'r41-extraction-result', artifact, claims: [], warnings: [], provider: { name: 'gemini', model: 'synthetic-model' }, status: 'pending' };
+    });
+    const roomPath = `https://aporia.test/api/rooms/${created.roomId}`;
+    const extracting = worker.fetch(new Request(`${roomPath}/proposals`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': created.sessionToken }, body: JSON.stringify({ kind: 'text', content: 'Synthetic evidence submitted before close' }) }), env);
+    await limiterEntered;
+    const close = await worker.fetch(new Request(`${roomPath}/close`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-creator': creator }, body: '{}' }), env);
+    expect(close.status).toBe(200);
+    releaseLimiter();
+    const response = await extracting;
+    expect(response.status).toBe(409);
+    expect(providerCalls).toBe(0);
+    expect(await db.prepare('SELECT COUNT(*) as count FROM proposals WHERE room_id = ?').bind(created.roomId).first().then((row) => row.count)).toBe(0);
+  } finally {
+    releaseLimiter?.();
+    vi.restoreAllMocks();
+    if (created?.roomId) {
+      await db.prepare('DELETE FROM proposal_claim_decisions WHERE proposal_id IN (SELECT id FROM proposals WHERE room_id = ?)').bind(created.roomId).run();
+      await db.prepare('DELETE FROM proposals WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM events WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM sessions WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM participants WHERE room_id = ?').bind(created.roomId).run();
+      await db.prepare('DELETE FROM rooms WHERE id = ?').bind(created.roomId).run();
+    }
+    if (accountId) {
+      await db.prepare('DELETE FROM creator_sessions WHERE account_id = ?').bind(accountId).run();
+      await db.prepare('DELETE FROM creator_accounts WHERE id = ?').bind(accountId).run();
+    }
+  }
+});

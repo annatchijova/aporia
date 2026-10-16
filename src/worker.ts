@@ -301,6 +301,9 @@ async function createProposal(env: Env, request: Request, roomId: string): Promi
   const names = snapshot.participants.map((item) => item.displayName);
   const limited = await enforceAiBurstLimit(env.AI_PROPOSAL_LIMITER, 'extract', roomId, actor.participantId);
   if (limited) return limited;
+  // Linearize external provider dispatch against lifecycle changes and room writes.
+  const dispatch = await env.DB.prepare("UPDATE rooms SET status = status WHERE id = ? AND revision = ? AND status = 'active'").bind(roomId, snapshot.revision).run();
+  if ((dispatch.meta?.changes ?? 0) !== 1) return json({ error: 'room changed before extraction could start; retry from the current room state' }, 409);
   try {
     const proposal = await new GeminiProvider(env).extract({ artifact, participantNames: names });
     const redactedImageArtifact = kind === 'image' ? {
@@ -444,6 +447,12 @@ async function discoverCandidates(env: Env, request: Request, roomId: string): P
   if (limited) {
     try { await env.DB.prepare("DELETE FROM candidate_proposals WHERE id = ? AND status = 'processing'").bind(proposalId).run(); } catch { /* The reservation's lease permits a later retry if cleanup fails. */ }
     return limited;
+  }
+  const dispatch = await env.DB.prepare(`UPDATE candidate_proposals SET created_at = ? WHERE id = ? AND status = 'processing'
+    AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(now(), proposalId, roomId, snapshot.revision).run();
+  if ((dispatch.meta?.changes ?? 0) !== 1) {
+    try { await env.DB.prepare("DELETE FROM candidate_proposals WHERE id = ? AND status = 'processing'").bind(proposalId).run(); } catch { /* A missing reservation is safe; the lease permits later cleanup otherwise. */ }
+    return json({ error: 'room changed before candidate discovery could start; retry from the current room state' }, 409);
   }
   try {
     const proposal = await new GeminiProvider(env).propose({ prompt: `Planning goal: ${snapshot.title}`, knownConstraints });
