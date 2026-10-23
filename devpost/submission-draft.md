@@ -16,7 +16,7 @@ After a talk or community event, people often want to keep hanging out, but the 
 
 Gemini helps interpret submitted text and screenshots and can propose candidate plans. Those suggestions remain proposals: contributors review extracted information, and APORIA's deterministic evaluator checks candidate plans against the group's confirmed information. When no plan fits, APORIA can show bounded changes that would make one possible. This keeps the group—not the model—in charge of what is true and what counts as a workable plan.
 
-Rooms are designed to end with the event. A creator can close a room in read-only mode, delete it, and recover a limited anonymized snapshot during a seven-day window. Creator email delivery must be configured before that lifecycle can be demonstrated on a hosted instance.
+Rooms are designed to end with the event. A creator can close a room in read-only mode, delete it, and recover a limited read-only snapshot during a seven-day window. It omits attendee names and chat but retains candidate details, aggregate counts, and an optional next-room number, so it is not guaranteed anonymous. Creator email delivery must be configured before that lifecycle can be demonstrated on a hosted instance.
 
 ## Who it's for
 

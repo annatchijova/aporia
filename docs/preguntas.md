@@ -286,3 +286,9 @@ Si empezás a eliminar una sala y el envío del correo de recuperación sigue pe
 - Otra cosa.
 
 Estado: pregunta surgida de la ronda red team 20; no implica una decisión tomada.
+
+## Alcance de los datos de recuperación — pendiente
+
+Tu respuesta para el PRD dice que la recuperación debe conservar solo información que no sea personal: lugares propuestos, el código de la próxima reunión y conteos, sin nombres ni chat. El código actual conserva títulos libres de opciones, horarios y precios, conteos y un código opcional de la sala siguiente. No comprueba que un título libre no incluya un nombre o dato personal, y un conteo de un grupo chico podría permitir inferencias. El resumen recuperado solo lo puede leer quien creó la sala, pero no se comprobó que sea anónimo.
+
+¿Querés mantener esos campos aceptando que no se puede prometer anonimato, o preferís reducir alguno para cumplir de forma más estricta con “solo información no personal”? Si querés reducirlos, indicá cuáles.

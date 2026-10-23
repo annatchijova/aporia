@@ -10,6 +10,8 @@ The implemented product flow includes meeting-code lookup, observer access, shar
 
 The room-read boundary follows lifecycle state: active and closed rooms retain public observer reads; reopening exposes a sanitized read-only archive through the old room link; trash hides the room; a recovered snapshot requires a creator session bound to the owning account. Participant writes and joins are active-only. The current local D1 evidence is summarized in [Round 41](docs/red-team/ROUND-41-ROOM-LIFECYCLE-AUTHORIZATION-COMPOSITION.md); browser and deployed authorization remain unverified.
 
+The seven-day recovery snapshot is allowlisted, not anonymous by guarantee. It retains candidate title, schedule, price, aggregate registration/attendance counts, and an optional next-room meeting number. A candidate title can contain identifying text, low-count aggregates can enable inference, and the next-room number links records across rooms. The snapshot is visible only to the creator after recovery, but its stored fields should still be treated as potentially identifying data. The PRD's stricter “nonpersonal information only” requirement remains open against this implementation; see [Round 42](docs/red-team/ROUND-42-RECOVERY-SNAPSHOT-IDENTIFIABILITY.md) and the pending [recovery-data question](docs/preguntas.md).
+
 The central AI/data boundary is:
 
 ```text

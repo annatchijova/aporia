@@ -294,3 +294,9 @@ If you start deleting a room and sending the recovery email is still pending, wh
 - Something else.
 
 Status: question raised by red-team Round 20; no decision is implied.
+
+## Scope of recovery data — pending
+
+Your PRD answer says recovery should keep only information that is not personal: proposed places, the next meeting's code, and counts, with no names or chat. Current code keeps free-form option titles, schedules and prices, counts, and an optional next-room code. It does not check that a free-form title contains no name or personal detail, and a count from a small group could allow inferences. Only the room creator can read the recovered summary, but its anonymity has not been established.
+
+Do you want to keep these fields while accepting that anonymity cannot be promised, or would you prefer to reduce any of them to follow “only nonpersonal information” more strictly? If you want to reduce them, specify which ones.
