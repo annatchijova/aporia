@@ -48,6 +48,7 @@ export function parseExtractionResponse(raw: unknown, artifact: InputArtifact, p
   const body = raw as Record<string, unknown>;
   if (Array.isArray(body.claims) && body.claims.length > MAX_CLAIMS) throw new ProviderError('invalid_output', 'provider returned too many claims', false);
   const claims = Array.isArray(body.claims) ? body.claims.map(parseClaim) : [];
+  if (new Set(claims.map((claim) => claim.id)).size !== claims.length) throw new ProviderError('invalid_output', 'provider returned duplicate claim identifiers', false);
   const warnings = parseStringList(body.warnings, 16, 'provider warnings');
   return { id: crypto.randomUUID(), artifact, claims, warnings, provider, status: 'pending' };
 }

@@ -347,6 +347,7 @@ async function confirmClaim(env: Env, request: Request, roomId: string, proposal
   const sourceArtifact = JSON.parse(proposal.artifact) as { participantId?: string };
   if (sourceArtifact.participantId !== actor.participantId) return json({ error: 'only the person who submitted this contribution can approve it' }, 403);
   const claims = JSON.parse(proposal.claims) as Array<Record<string, unknown>>;
+  if (new Set(claims.map((item) => item.id)).size !== claims.length) return json({ error: 'proposal claim identifiers are ambiguous' }, 409);
   const claim = claims.find((item) => item.id === input.claimId) as { id: string; kind: string; participantId: string | null; value: unknown } | undefined;
   if (!claim) return json({ error: 'claim not found' }, 404);
   const priorDecision = await env.DB.prepare('SELECT decision FROM proposal_claim_decisions WHERE proposal_id = ? AND claim_id = ?').bind(proposalId, claim.id).first<{ decision: string }>();

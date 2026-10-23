@@ -15,6 +15,10 @@ describe('parseExtractionResponse provider limits', () => {
     expect(() => parseExtractionResponse({ claims: [claim('x'.repeat(129))], warnings: [] }, artifact, provider)).toThrow(ProviderError);
   });
 
+  it('rejects duplicate claim identifiers', () => {
+    expect(() => parseExtractionResponse({ claims: [claim('duplicate'), claim('duplicate')], warnings: [] }, artifact, provider)).toThrow(ProviderError);
+  });
+
   it('rejects oversized ambiguity strings', () => {
     expect(() => parseExtractionResponse({ claims: [{ ...claim(), ambiguity: ['x'.repeat(501)] }], warnings: [] }, artifact, provider)).toThrow(ProviderError);
   });

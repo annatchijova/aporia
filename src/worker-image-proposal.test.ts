@@ -52,7 +52,7 @@ function fakeEnv() {
     AI_DISCOVERY_LIMITER: { limit: async () => ({ success: true }) },
     ASSETS: { fetch: vi.fn() },
   };
-  return { env: env as unknown as Parameters<typeof worker.fetch>[1], insertedProposals, batches };
+  return { env: env as unknown as Parameters<typeof worker.fetch>[1], insertedProposals, batches, pendingProposal };
 }
 
 function imageRequest() {
@@ -144,6 +144,26 @@ describe('Worker image proposal flow', () => {
     expect(response.status).toBe(200);
     expect(batch.some((statement) => statement.sql.includes('INSERT OR IGNORE INTO proposal_claim_decisions'))).toBe(true);
     expect(batch.some((statement) => statement.sql.includes('json_set(claims_json') && statement.sql.includes('].sourceText'))).toBe(true);
+  });
+
+  it('fails closed on duplicate claim IDs in a pending proposal', async () => {
+    const { env, batches, pendingProposal } = fakeEnv();
+    pendingProposal.claims = JSON.stringify([
+      { id: 'duplicate-id', kind: 'proposal', participantId: 'participant-image-r9', value: { text: 'First claim' }, sourceText: 'First source', confidence: 'high', ambiguity: [] },
+      { id: 'duplicate-id', kind: 'dietary_note', participantId: 'participant-image-r9', value: { text: 'Second claim' }, sourceText: 'Second source', confidence: 'high', ambiguity: [] },
+    ]);
+    const request = new Request('https://aporia.test/api/rooms/room-image-r9/proposals/proposal-image-r9/confirm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-aporia-session': sessionToken },
+      body: JSON.stringify({ claimId: 'duplicate-id', participantId: 'participant-image-r9', expectedRevision: 0 }),
+    });
+
+    const response = await worker.fetch(request, env);
+    const payload = await response.json() as { error?: string };
+
+    expect(response.status).toBe(409);
+    expect(payload.error).toContain('claim identifiers are ambiguous');
+    expect(batches).toHaveLength(0);
   });
 
   it('preserves the provider rate-limit code for the client without persisting a proposal', async () => {
