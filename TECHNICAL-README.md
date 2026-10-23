@@ -8,7 +8,9 @@
 
 The implemented product flow includes meeting-code lookup, observer access, shared chat with a server-side five-message-per-participant cap, screenshot/text proposals with uploader review, candidate discovery and human acceptance, deterministic plan evaluation, dietary notes, and creator close/reopen/delete/recovery. Gemini extraction and discovery have separate configured burst limits of five requests per room-participant pair per 60 seconds. Since each room join creates a new participant ID, joining again yields a fresh limiter key. Cloudflare describes these binding counters as approximate and location-local; they are not a global quota or spend cap, so aggregate calls and spend remain unbounded by APORIA. See [its rate-limit documentation](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/).
 
-The central boundary is:
+The room-read boundary follows lifecycle state: active and closed rooms retain public observer reads; reopening exposes a sanitized read-only archive through the old room link; trash hides the room; a recovered snapshot requires a creator session bound to the owning account. Participant writes and joins are active-only. The current local D1 evidence is summarized in [Round 41](docs/red-team/ROUND-41-ROOM-LIFECYCLE-AUTHORIZATION-COMPOSITION.md); browser and deployed authorization remain unverified.
+
+The central AI/data boundary is:
 
 ```text
 untrusted human/AI input
