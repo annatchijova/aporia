@@ -275,6 +275,8 @@ El PRD queda en estado `approved`. El flujo de habilidades todavía no había ge
 
 Para implementar límites sin bloquear una reunión normal ni dejar abierto el consumo de recursos, ¿cuál es el máximo de participantes por sala y qué cuota de uso de Gemini debería tener cada sala durante el hackathon? La prueba local llegó a 20 participantes y 20 opciones, pero eso no define el máximo del producto. También hace falta saber si preferís un tope estricto de llamadas por sala o un presupuesto máximo de uso/costo.
 
+**Dato técnico para decidir:** el límite actual de cinco llamadas por operación está asociado al ID de participante. El código genera una identidad y una sesión nuevas en cada ingreso a la sala, incluso si vuelve a entrar la misma persona; por eso ese límite se puede renovar al volver a ingresar. Cloudflare además aplica sus contadores de forma aproximada y separada por ubicación. No hay hoy un cupo total por sala o un presupuesto global.
+
 ## Precisión del ciclo de vida — pendiente
 
 Si empezás a eliminar una sala y el envío del correo de recuperación sigue pendiente, mientras tanto la reabrís desde otra pestaña, ¿qué debería pasar cuando termine el envío?

@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { getPlatformProxy } from 'wrangler';
-import { afterAll, expect, it } from 'vitest';
+import { afterAll, afterEach, expect, it, vi } from 'vitest';
 import { emptySnapshot } from '../../src/core/model';
+import { GeminiProvider } from '../../src/intelligence/gemini';
 import worker from '../../src/worker';
 
 const persistPath = '/tmp/aporia-round39-source-retention-d1';
@@ -13,6 +14,7 @@ const claimId = 'claim-r39-source-retention';
 const proxyPromise = getPlatformProxy({ configPath: `${process.cwd()}/wrangler.json`, envFiles: [], persist: { path: persistPath } });
 let proxy;
 afterAll(async () => await proxy?.dispose());
+afterEach(() => vi.restoreAllMocks());
 
 it('redacts a reviewed claim source in real local D1 while retaining the structured claim', async () => {
   proxy = await proxyPromise;
@@ -57,4 +59,59 @@ it('redacts a reviewed claim source in real local D1 while retaining the structu
   expect(claims[0].sourceText).toBe('');
   expect(claims[0].value).toEqual({ text: 'vegetarian' });
   expect(decision.decision).toBe('confirmed');
+});
+
+it('confirms a room rejoin creates a fresh AI burst-limit identity', async () => {
+  proxy ??= await proxyPromise;
+  const db = proxy.env.DB;
+  const roomId = 'room-r40-identity-churn';
+  const ddl = [
+    `CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, title TEXT NOT NULL, revision INTEGER NOT NULL, snapshot_json TEXT NOT NULL, created_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active')`,
+    `CREATE TABLE IF NOT EXISTS participants (id TEXT PRIMARY KEY, room_id TEXT NOT NULL, display_name TEXT NOT NULL, created_at TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, room_id TEXT NOT NULL, participant_id TEXT NOT NULL, created_at TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS proposals (id TEXT PRIMARY KEY, room_id TEXT NOT NULL, artifact_json TEXT NOT NULL, claims_json TEXT NOT NULL, provider_json TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, room_id TEXT NOT NULL, revision INTEGER NOT NULL, actor_id TEXT NOT NULL, event_type TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL)`,
+  ];
+  for (const sql of ddl) await db.prepare(sql).run();
+  await db.prepare('DELETE FROM proposals WHERE room_id = ?').bind(roomId).run();
+  await db.prepare('DELETE FROM events WHERE room_id = ?').bind(roomId).run();
+  await db.prepare('DELETE FROM sessions WHERE room_id = ?').bind(roomId).run();
+  await db.prepare('DELETE FROM participants WHERE room_id = ?').bind(roomId).run();
+  await db.prepare('DELETE FROM rooms WHERE id = ?').bind(roomId).run();
+
+  const snapshot = emptySnapshot(roomId, 'Synthetic identity churn room');
+  const now = new Date().toISOString();
+  await db.prepare('INSERT INTO rooms (id, title, revision, snapshot_json, created_at, status) VALUES (?, ?, 0, ?, ?, ?)').bind(roomId, snapshot.title, JSON.stringify(snapshot), now, 'active').run();
+  const aiKeys = [];
+  const env = {
+    ...proxy.env,
+    ROOM_JOIN_LIMITER: { limit: async () => ({ success: true }) },
+    AI_PROPOSAL_LIMITER: { limit: async ({ key }) => { aiKeys.push(key); return { success: true }; } },
+  };
+  const extract = vi.spyOn(GeminiProvider.prototype, 'extract').mockImplementation(async (request) => ({
+    id: crypto.randomUUID(), artifact: request.artifact, claims: [], warnings: [],
+    provider: { name: 'synthetic', model: 'fixture' }, status: 'pending',
+  }));
+
+  const join = async () => {
+    const response = await worker.fetch(new Request(`https://aporia.test/api/rooms/${roomId}/participants`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ displayName: 'Same visitor' }),
+    }), env);
+    expect(response.status).toBe(200);
+    return await response.json();
+  };
+  const first = await join();
+  const second = await join();
+  const propose = async (sessionToken) => worker.fetch(new Request(`https://aporia.test/api/rooms/${roomId}/proposals`, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': sessionToken },
+    body: JSON.stringify({ kind: 'text', content: 'synthetic contribution' }),
+  }), env);
+  const responses = await Promise.all([propose(first.sessionToken), propose(second.sessionToken)]);
+
+  expect(responses.map((response) => response.status)).toEqual([200, 200]);
+  expect(first.participantId).not.toBe(second.participantId);
+  expect(aiKeys).toHaveLength(2);
+  expect(new Set(aiKeys).size).toBe(2);
+  expect(extract).toHaveBeenCalledTimes(2);
 });

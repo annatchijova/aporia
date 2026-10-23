@@ -33,6 +33,7 @@ The tested ratio is request count to provider invocations: pre-fix 6:6; post-fix
 - Checked both routes that invoke `GeminiProvider`: extraction and candidate discovery.
 - Checked candidate idempotency replay ordering: existing replay returns before it needs a new provider call or consumes the AI allowance.
 - Confirmed proposal review, candidate acceptance, and list/read endpoints do not invoke Gemini and were not placed under these provider-call limits.
+- **CODE FACT (follow-up source review, 2026-10-23):** `joinRoom` issues a fresh random participant ID and session on every successful join, even for the same display name; the AI limiter key includes that participant ID. Rejoining therefore creates a new per-participant allowance. The public join limiter slows bursts by source IP, but is itself approximate/location-local and does not provide a durable room ceiling. Round 40 separately induced this through local D1 and mocked provider/limiter bindings; live Cloudflare counters and same-human attribution remain unverified.
 - Multi-identity, multi-room, distributed-location, and global monthly-spend paths remain open. The binding is not exact cross-location accounting.
 
 ## Verification
@@ -41,4 +42,4 @@ The tested ratio is request count to provider invocations: pre-fix 6:6; post-fix
 
 ## Disposition
 
-The confirmed per-session unbounded-call gap is closed with an approximate burst limit. **Global provider spend remains unbounded by a shared quota** and must not be described as protected by this fix. See [ADR-0008](../decisions/ADR-0008-ai-provider-burst-limits.md).
+The confirmed per-session unbounded-call gap is closed with an approximate burst limit. Round 40 later induced rejoining the same room with the same synthetic display name: both sessions received distinct AI keys and both mocked extraction calls ran. The five-call allowance is per identity rather than per person. **Global provider spend remains unbounded by a shared quota** and must not be described as protected by this fix. See [Round 40](ROUND-40-AI-IDENTITY-CHURN.md) and [ADR-0008](../decisions/ADR-0008-ai-provider-burst-limits.md).

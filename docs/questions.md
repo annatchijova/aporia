@@ -283,6 +283,8 @@ Current state (October 12, 2026): the PRD is approved and `devpost/spec.md` has 
 
 To implement limits without blocking a normal gathering or leaving resource use open, what is the maximum number of participants per room, and what Gemini usage quota should each room have during the hackathon? The local probe reached 20 participants and 20 options, but that does not define the product maximum. We also need to know whether you prefer a strict cap on calls per room or a maximum usage/cost budget.
 
+**Technical information for this decision:** the current limit of five calls per operation is tied to a participant ID. The code creates a new identity and session on each room entry, including when the same person joins again; therefore, that limit can be renewed by rejoining. Cloudflare also applies its counters approximately and separately by location. There is currently no total allowance per room or global budget.
+
 ## Lifecycle clarification — pending
 
 If you start deleting a room and sending the recovery email is still pending, while that is happening you reopen it from another tab, what should happen when the send finishes?
