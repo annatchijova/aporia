@@ -98,6 +98,18 @@ describe('Worker image proposal flow', () => {
     expect(insertedProposals).toHaveLength(0);
   });
 
+  it('preserves the provider rate-limit code for the client without persisting a proposal', async () => {
+    const { env, insertedProposals } = fakeEnv();
+    vi.spyOn(GeminiProvider.prototype, 'extract').mockRejectedValue(new ProviderError('rate_limited', 'synthetic provider limit', true));
+
+    const response = await worker.fetch(imageRequest(), env);
+    const payload = await response.json() as { error: string; code: string; retryable: boolean };
+
+    expect(response.status).toBe(429);
+    expect(payload).toMatchObject({ code: 'rate_limited', retryable: true });
+    expect(insertedProposals).toHaveLength(0);
+  });
+
   it('fails closed when the AI request limiter is unavailable', async () => {
     const { env } = fakeEnv();
     Object.assign(env, { AI_PROPOSAL_LIMITER: { limit: vi.fn().mockRejectedValue(new Error('synthetic limiter failure')) } });

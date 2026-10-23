@@ -396,3 +396,10 @@ This log records how the official Build With AI: Basics skills are used in this 
 - **Finding/fix:** One mocked Gemini 429 caused two POST attempts because the generic adapter retry treated `rate_limited` as an immediate-retry signal. The adapter now returns 429 after one attempt while preserving the caller-visible retryable error; 503 keeps its existing single retry.
 - **Evidence:** The new exact-call assertion failed before the code change (2 calls observed, 1 expected) and passed afterward. See [Round 35](red-team/ROUND-35-GEMINI-RATE-LIMIT-RETRY.md) and [ADR-0002](decisions/ADR-0002-gemini-model-error-boundary.md).
 - **Limits:** Mocked `fetch`; no live provider behavior, `Retry-After` handling, billing, route/client backoff, or deployment was verified.
+
+## October 22, 2026 — explain provider rate limits in the UI
+
+- **Used:** Personal `resilient-ui-states` and `non-overwhelming-ux` to make the error actionable without adding an automatic retry; `red-team-auditing` to follow the Worker-to-client contract; `falsifiable-testing` to prove the Worker keeps the rate-limit code and the client maps only that code to the new message.
+- **Finding/fix:** The Worker returned HTTP 429 with `code: rate_limited`, but the shared client helper discarded `code`, causing text extraction, screenshot extraction, and candidate discovery to show a generic “try again” message. The helper now preserves structured error codes and those features explain that Gemini is limiting requests and to wait before trying again. No retry delay is guessed.
+- **Evidence:** Worker mock test confirms status 429, code, retryable flag, and no proposal persistence; focused client tests confirm the rate-limit message is selected and unrelated failures keep their prior fallback. Full suite: 41 tests/10 files; local D1: 24 tests; typecheck/build/diff check pass. See [Round 36](red-team/ROUND-36-RATE-LIMIT-CLIENT-ERROR.md).
+- **Limits:** No browser or screen-reader session; the UI render and announcement remain unverified. No Gemini request was made.
