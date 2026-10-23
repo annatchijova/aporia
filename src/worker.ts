@@ -306,14 +306,15 @@ async function createProposal(env: Env, request: Request, roomId: string): Promi
   if ((dispatch.meta?.changes ?? 0) !== 1) return json({ error: 'room changed before extraction could start; retry from the current room state' }, 409);
   try {
     const proposal = await new GeminiProvider(env).extract({ artifact, participantNames: names });
-    const redactedImageArtifact = kind === 'image' ? {
-      id: artifact.id, kind: 'image' as const, content: '', contentHash: '', createdAt: artifact.createdAt, participantId: artifact.participantId,
-    } : null;
-    const retainedArtifact = redactedImageArtifact ?? artifact;
+    // The raw submission is only needed for the provider request. Keep the
+    // proposal identity for uploader-only review, not a second copy of input.
+    const redactedArtifact = {
+      id: artifact.id, kind: artifact.kind, content: '', contentHash: '', createdAt: artifact.createdAt, participantId: artifact.participantId,
+    };
     const stored = await env.DB.prepare(`INSERT INTO proposals (id, room_id, artifact_json, claims_json, provider_json, status, created_at)
-      SELECT ?, ?, ?, ?, ?, ?, ? WHERE (SELECT status FROM rooms WHERE id = ?) = 'active'`).bind(proposal.id, roomId, JSON.stringify(retainedArtifact), JSON.stringify(proposal.claims), JSON.stringify(proposal.provider), proposal.status, artifact.createdAt, roomId).run();
+      SELECT ?, ?, ?, ?, ?, ?, ? WHERE (SELECT status FROM rooms WHERE id = ?) = 'active'`).bind(proposal.id, roomId, JSON.stringify(redactedArtifact), JSON.stringify(proposal.claims), JSON.stringify(proposal.provider), proposal.status, artifact.createdAt, roomId).run();
     if ((stored.meta?.changes ?? 0) !== 1) return json({ error: 'this room is read-only' }, 409);
-    const responseProposal = redactedImageArtifact ? { ...proposal, artifact: redactedImageArtifact } : proposal;
+    const responseProposal = { ...proposal, artifact: redactedArtifact };
     return json({ proposal: responseProposal });
   } catch (error) {
     if (error instanceof ProviderError) {
@@ -362,11 +363,19 @@ async function confirmClaim(env: Env, request: Request, roomId: string, proposal
   const duplicate = snapshot.facts.some((fact) => fact.participantId === participantId && fact.kind === claim.kind && canonicalize(fact.value) === canonicalize(claim.value));
   const decision = (revision: number, requirePriorEvent = false) => env.DB.prepare(`INSERT OR IGNORE INTO proposal_claim_decisions (proposal_id, claim_id, decision, created_at)
     SELECT ?, ?, ?, ? WHERE ${requirePriorEvent ? 'changes() = 1 AND ' : ''}EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(proposalId, claim.id, duplicate ? 'duplicate' : 'confirmed', now(), roomId, revision);
+  // Source snippets can contain personal details. Once this claim is reviewed,
+  // keep the structured claim and decision but erase the no-longer-needed snippet.
+  const redactReviewedSource = () => env.DB.prepare(`UPDATE proposals
+    SET claims_json = json_set(claims_json,
+      '$[' || (SELECT key FROM json_each(claims_json) WHERE json_extract(value, '$.id') = ? LIMIT 1) || '].sourceText', '')
+    WHERE id = ? AND room_id = ? AND status = 'pending'
+      AND EXISTS (SELECT 1 FROM json_each(claims_json) WHERE json_extract(value, '$.id') = ?)`)
+    .bind(claim.id, proposalId, roomId, claim.id);
   const proposalUpdate = (revision: number) => env.DB.prepare(`UPDATE proposals SET status = 'confirmed' WHERE id = ? AND status = 'pending' AND
     (SELECT COUNT(*) FROM proposal_claim_decisions WHERE proposal_id = ? AND decision IN ('confirmed', 'duplicate')) >= ?
     AND changes() = 1 AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(proposalId, proposalId, claims.length, roomId, revision);
   if (duplicate) {
-    const result = await env.DB.batch([decision(snapshot.revision), proposalUpdate(snapshot.revision)]);
+    const result = await env.DB.batch([decision(snapshot.revision), redactReviewedSource(), proposalUpdate(snapshot.revision)]);
     if ((result[0]?.meta?.changes ?? 0) !== 1) return json({ error: 'claim review changed; refresh the room and try again' }, 409);
     return json({ snapshot, completedClaimId: claim.id, duplicate: true });
   }
@@ -377,7 +386,7 @@ async function confirmClaim(env: Env, request: Request, roomId: string, proposal
   const update = env.DB.prepare("UPDATE rooms SET revision = ?, snapshot_json = ? WHERE id = ? AND revision = ? AND status = 'active'").bind(next.revision, JSON.stringify(next), roomId, snapshot.revision);
   const guardedInsert = env.DB.prepare(`INSERT INTO events (id, room_id, revision, actor_id, event_type, payload_json, created_at)
     SELECT ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1 AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND revision = ? AND status = 'active')`).bind(event.id, event.roomId, event.revision, event.actorId, event.type, JSON.stringify(event.payload), event.createdAt, roomId, next.revision);
-  const result = await env.DB.batch([update, guardedInsert, decision(next.revision, true), proposalUpdate(next.revision)]);
+  const result = await env.DB.batch([update, guardedInsert, decision(next.revision, true), redactReviewedSource(), proposalUpdate(next.revision)]);
   if ((result[0]?.meta?.changes ?? 0) !== 1 || (result[2]?.meta?.changes ?? 0) !== 1) return json({ error: 'concurrent change; retry from current room state' }, 409);
   return json({ snapshot: next, completedClaimId: claim.id, duplicate: false });
 }

@@ -8,8 +8,8 @@
 |---|---|---|---|
 | Join a room | Display name | Nothing | Name in the room snapshot and participant row; a session token is kept in browser local storage. |
 | Send a chat message | Message text and session token | Nothing | Message and author in the room database; room messages are readable by anyone with the room link or meeting number. |
-| Ask APORIA to understand text | Text, participant display names, room/session context | Submitted text and participant display names | The pending proposal, submitted text, extracted source snippets, and claims. |
-| Ask APORIA to understand a screenshot | Image bytes, MIME type, session token | Screenshot bytes, prompt, and participant display names | After the provider responds, APORIA stores a redacted image artifact without image bytes or fingerprint metadata, plus the extracted source snippets and claims. |
+| Ask APORIA to understand text | Text, participant display names, room/session context | Submitted text and participant display names | After the provider responds, APORIA stores a redacted artifact without submitted text or its hash, plus extracted source snippets and claims while review is pending. A snippet is erased from D1 when its claim is decided. |
+| Ask APORIA to understand a screenshot | Image bytes, MIME type, session token | Screenshot bytes, prompt, and participant display names | After the provider responds, APORIA stores a redacted artifact without image bytes or fingerprint metadata, plus extracted source snippets and claims while review is pending. A snippet is erased from D1 when its claim is decided. |
 | Find ideas | Room goal, confirmed constraints, session token | Room goal and confirmed constraints | Pending suggestions and provider metadata. A participant must accept suggestions before they become room candidates. |
 | Request creator access or deletion recovery | Creator email and room context | Nothing | One-time link and creator-session records. Resend sends the creator email; its provider-side retention was not checked here. |
 

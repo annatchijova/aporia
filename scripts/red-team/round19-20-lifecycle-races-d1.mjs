@@ -615,8 +615,9 @@ it('keeps AI contribution evidence through close and removes both AI queues on r
     expect(close.status).toBe(200);
     const retained = await db.prepare('SELECT p.status, p.artifact_json as artifact, p.claims_json as claims, (SELECT COUNT(*) FROM candidate_proposals WHERE room_id = p.room_id) as candidateCount FROM proposals p WHERE p.id = ?').bind(extraction.id).first();
     expect(retained.status).toBe('confirmed');
-    expect(JSON.parse(retained.artifact).content).toBe(extraction.artifact.content);
-    expect(JSON.parse(retained.claims)[0].sourceText).toBe(extraction.claims[0].sourceText);
+    expect(JSON.parse(retained.artifact).content).toBe('');
+    expect(JSON.parse(retained.claims)[0].sourceText).toBe('');
+    expect(JSON.parse(retained.claims)[0].value).toEqual(extraction.claims[0].value);
     expect(retained.candidateCount).toBe(1);
     const pendingWhileClosed = await worker.fetch(new Request(`${roomPath}/proposals`, { headers: { 'x-aporia-session': created.sessionToken } }), env);
     expect(pendingWhileClosed.status).toBe(409);

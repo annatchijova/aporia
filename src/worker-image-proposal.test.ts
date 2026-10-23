@@ -9,18 +9,26 @@ const sessionToken = 'synthetic-participant-session-token';
 
 function fakeEnv() {
   const insertedProposals: unknown[][] = [];
+  const batches: Array<Array<{ sql: string; values: unknown[] }>> = [];
   const snapshot = emptySnapshot('room-image-r9', 'Synthetic image flow');
   snapshot.participants.push({ id: 'participant-image-r9', displayName: 'Synthetic uploader' });
+  const pendingProposal = {
+    claims: JSON.stringify([{ id: 'claim-image-r9', kind: 'dietary_note', participantId: 'participant-image-r9', value: { text: 'synthetic note' }, sourceText: 'synthetic private source', confidence: 'high', ambiguity: [] }]),
+    artifact: JSON.stringify({ participantId: 'participant-image-r9' }),
+  };
   const env = {
     DB: {
       prepare(sql: string) {
         return {
           bind(...values: unknown[]) {
             return {
+              sql,
+              values,
               async first<T>() {
                 if (sql.includes('SELECT status FROM rooms')) return { status: 'active' } as T;
                 if (sql.includes('SELECT participant_id as participantId FROM sessions')) return { participantId: 'participant-image-r9' } as T;
                 if (sql.includes('SELECT snapshot_json as snapshot FROM rooms')) return { snapshot: JSON.stringify(snapshot) } as T;
+                if (sql.includes('SELECT claims_json as claims, artifact_json as artifact')) return pendingProposal as T;
                 return null;
               },
               async run() {
@@ -31,6 +39,10 @@ function fakeEnv() {
           },
         };
       },
+      async batch(statements: Array<{ sql: string; values: unknown[] }>) {
+        batches.push(statements);
+        return statements.map(() => ({ meta: { changes: 1 } }));
+      },
     },
     ROOM_LOOKUP_LIMITER: { limit: async () => ({ success: true }) },
     ROOM_CREATE_LIMITER: { limit: async () => ({ success: true }) },
@@ -40,7 +52,7 @@ function fakeEnv() {
     AI_DISCOVERY_LIMITER: { limit: async () => ({ success: true }) },
     ASSETS: { fetch: vi.fn() },
   };
-  return { env: env as unknown as Parameters<typeof worker.fetch>[1], insertedProposals };
+  return { env: env as unknown as Parameters<typeof worker.fetch>[1], insertedProposals, batches };
 }
 
 function imageRequest() {
@@ -86,6 +98,26 @@ describe('Worker image proposal flow', () => {
     expect(payload.proposal.claims[0].sourceText).toBe('synthetic note from image');
   });
 
+  it('does not persist the submitted text after extracting a pending proposal', async () => {
+    const { env, insertedProposals } = fakeEnv();
+    vi.spyOn(GeminiProvider.prototype, 'extract').mockImplementation(async (request) => ({
+      id: 'proposal-text-r9', artifact: request.artifact,
+      claims: [{ id: 'claim-text-r9', kind: 'availability', participantId: 'participant-image-r9', value: { weekday: 2, startMinute: 1080, endMinute: 1320 }, sourceText: 'I am available Tuesday', confidence: 'high', ambiguity: [] }],
+      warnings: [], provider: { name: 'gemini', model: 'synthetic-model' }, status: 'pending',
+    }));
+    const request = new Request('https://aporia.test/api/rooms/room-image-r9/proposals', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-aporia-session': sessionToken },
+      body: JSON.stringify({ kind: 'text', content: 'I am available Tuesday' }),
+    });
+
+    const response = await worker.fetch(request, env);
+    const storedArtifact = JSON.parse(String(insertedProposals[0]?.[2])) as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(storedArtifact).toMatchObject({ kind: 'text', content: '', contentHash: '' });
+    expect(storedArtifact).not.toHaveProperty('mimeType');
+  });
+
   it('does not persist a proposal when provider processing fails', async () => {
     const { env, insertedProposals } = fakeEnv();
     vi.spyOn(GeminiProvider.prototype, 'extract').mockRejectedValue(new ProviderError('unavailable', 'synthetic provider failure', true));
@@ -96,6 +128,22 @@ describe('Worker image proposal flow', () => {
     expect(response.status).toBe(503);
     expect(payload).toMatchObject({ error: 'Extraction failed. Try again.', code: 'unavailable' });
     expect(insertedProposals).toHaveLength(0);
+  });
+
+  it('erases a reviewed source snippet in the same D1 batch as the decision', async () => {
+    const { env, batches } = fakeEnv();
+    const request = new Request('https://aporia.test/api/rooms/room-image-r9/proposals/proposal-image-r9/confirm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-aporia-session': sessionToken },
+      body: JSON.stringify({ claimId: 'claim-image-r9', participantId: 'participant-image-r9', expectedRevision: 0 }),
+    });
+
+    const response = await worker.fetch(request, env);
+    const batch = batches[0] ?? [];
+
+    expect(response.status).toBe(200);
+    expect(batch.some((statement) => statement.sql.includes('INSERT OR IGNORE INTO proposal_claim_decisions'))).toBe(true);
+    expect(batch.some((statement) => statement.sql.includes('json_set(claims_json') && statement.sql.includes('].sourceText'))).toBe(true);
   });
 
   it('preserves the provider rate-limit code for the client without persisting a proposal', async () => {
