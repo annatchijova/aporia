@@ -62,7 +62,9 @@ export class GeminiProvider implements IntelligenceProvider {
     try {
       return await generateOnce();
     } catch (error) {
-      if (!(error instanceof ProviderError) || !error.retryable) throw error;
+      // A 429 is retryable by the caller after backoff, but an immediate
+      // provider retry only repeats work while Gemini is explicitly limiting us.
+      if (!(error instanceof ProviderError) || !error.retryable || error.code === 'rate_limited') throw error;
       await new Promise((resolve) => setTimeout(resolve, 1_000));
       return generateOnce();
     }

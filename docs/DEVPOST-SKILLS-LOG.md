@@ -389,3 +389,10 @@ This log records how the official Build With AI: Basics skills are used in this 
 - **Evidence:** Separate local Wrangler D1 inductions reproduced each provider sink before the fix. Post-fix tests show lifecycle-first requests make zero provider calls, and already-running candidate generation cannot restore data after close/reopen/delete. See [Round 34](red-team/ROUND-34-AI-DISPATCH-ROOM-LIFECYCLE.md) and [ADR-0010](decisions/ADR-0010-ai-dispatch-lifecycle-boundary.md).
 - **Limits:** Provider calls already authorized by the D1 checkpoint cannot be cancelled; their output is discarded after a later lifecycle transition. Gemini, Resend, and Cloudflare's deployed limiter were mocked; no deployment occurred.
 - **Verification:** 24 dedicated D1 tests and 38 general tests passed; typecheck/build/diff checks passed. The reproduction uses Node 22.23.2, Vitest 5.0.2, and a pinned script SHA in the Round 34 report.
+
+## October 22, 2026 — Gemini provider rate-limit retry
+
+- **Used:** Personal `beyond-the-fix` to challenge the existing retry policy; `red-team-auditing` to state the threat model and induction boundary; `variant-analysis` to compare 429 with temporary 503 sibling responses; `falsifiable-testing` to assert the exact provider-call count; `git-discipline` to record a pre-session restore tag.
+- **Finding/fix:** One mocked Gemini 429 caused two POST attempts because the generic adapter retry treated `rate_limited` as an immediate-retry signal. The adapter now returns 429 after one attempt while preserving the caller-visible retryable error; 503 keeps its existing single retry.
+- **Evidence:** The new exact-call assertion failed before the code change (2 calls observed, 1 expected) and passed afterward. See [Round 35](red-team/ROUND-35-GEMINI-RATE-LIMIT-RETRY.md) and [ADR-0002](decisions/ADR-0002-gemini-model-error-boundary.md).
+- **Limits:** Mocked `fetch`; no live provider behavior, `Retry-After` handling, billing, route/client backoff, or deployment was verified.

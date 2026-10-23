@@ -55,8 +55,10 @@ describe('GeminiProvider failure boundary', () => {
   });
 
   it('retains ProviderError identity through the provider boundary', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 429 })));
+    const fetchMock = vi.fn().mockResolvedValue(new Response('', { status: 429 }));
+    vi.stubGlobal('fetch', fetchMock);
     await expect(new GeminiProvider({ GEMINI_API_KEY: 'test-key' }).extract({ artifact, participantNames: [] })).rejects.toBeInstanceOf(ProviderError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('sends image artifacts as Gemini inline data and advertises image extraction', async () => {

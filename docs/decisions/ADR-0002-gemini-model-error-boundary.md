@@ -18,6 +18,7 @@ La key no se registra en este documento ni en el repositorio.
 - 404 de modelo se expone como `unavailable` no retryable.
 - 503/502/504 se expone como `unavailable` retryable con respuesta JSON 503 en la ruta de extracción.
 - 429 se expone como `rate_limited` y respuesta JSON 429.
+- Un 429 no activa el retry interno del adapter: se devuelve al caller para que pueda decidir cuándo reintentar, sin repetir de inmediato una llamada mientras Gemini limita el tráfico.
 - Respuesta 2xx no-JSON o JSON inválido se expone como `invalid_output` y respuesta JSON 502.
 - Falta de `GEMINI_API_KEY` falla antes de hacer network access y produce respuesta estructurada, sin simulación.
 - El cliente no intenta parsear HTML como JSON y muestra un error genérico de extracción.
@@ -32,4 +33,4 @@ Reabrir si el endpoint/documentación vigente deja de aceptar `x-goog-api-key`, 
 
 ## Evidencia local
 
-`src/intelligence/gemini.test.ts` cubre 404, 503, body no-JSON, key ausente, header sin query secret y preservación de `ProviderError`.
+`src/intelligence/gemini.test.ts` cubre 404, 503 (incluyendo un retry temporal), 429 con exactamente un POST, body no-JSON, key ausente, header sin query secret y preservación de `ProviderError`. Round 35 registró que antes el adapter hacía dos POST ante un solo 429 simulado; tras el cambio hace uno y conserva `rate_limited`.
