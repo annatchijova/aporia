@@ -38,3 +38,4 @@
 button{transition:transform .16s ease,filter .16s ease}
 button:not(:disabled):hover{filter:brightness(1.06);transform:translateY(-1px)}
 @media(max-width:800px){.landing{grid-template-columns:minmax(0,1fr);grid-template-areas:"eyebrow" "title" "lede" "how" "code" "create" "error";padding-top:6rem}.landing>.how-it-works{align-content:start}.landing>.meeting-code-form{align-self:stretch}}
+.privacy-link{color:var(--muted);font-size:.8rem}
