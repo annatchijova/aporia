@@ -13,11 +13,13 @@
 
 **PLAUSIBLE HYPOTHESIS:** a valid participant can keep appending candidates and confirmed facts, making subsequent requests, snapshots and lookup responses grow without a product-level bound. Many distinct IPs can also bypass the per-IP join burst cap over time. Code inspection establishes the missing aggregate ceilings; this round did not induce a resource-exhaustion failure, and does not report one as confirmed.
 
-## R4-02 — Gemini-backed routes have no application quota
+## R4-02 — Gemini-backed routes had no application quota at the time of this round
 
 **CODE FACT:** both extraction and candidate discovery call `GeminiProvider` after session validation. The routes have no dedicated limiter or durable usage ceiling. A retryable provider failure triggers one retry after a one-second delay; each attempt can wait up to 12 seconds. Extraction also sends every room participant's display name, and candidate discovery sends every stored constraint. Provider output is persisted as proposals. Existing Round 3 bindings cover lookup, create and join only.
 
 **PLAUSIBLE HYPOTHESIS:** a valid participant can repeatedly invoke provider-backed operations and consume shared provider quota or spend. The route and retry structure establishes exposure, but no provider request was made, and this round did not confirm billing impact, provider quota exhaustion, or a retry storm.
+
+**Later disposition (Round 32; status rechecked 2026-10-23):** each operation now has a separate approximate limit of five calls per 60 seconds per room-participant pair. This reduces repeated calls from one key but is not an aggregate quota. Current Cloudflare documentation says binding counters are approximate and location-local; calls can exceed the configured threshold and separate locations do not share a worldwide counter ([Cloudflare Rate Limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/), checked 2026-10-23). Multiple rooms/participants and provider retries also mean APORIA has no strict global request, token, daily/monthly usage, or spend cap. No live provider/billing behavior was checked. The original induction and timestamped table below remain historical evidence from before the later burst-limit fix.
 
 ## Variant analysis
 

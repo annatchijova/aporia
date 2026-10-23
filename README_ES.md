@@ -2,7 +2,7 @@
 
 **Dejen de discutir. Empiecen a organizarse.**
 
-[English](README.md) · [Español](README_ES.md) · [Technical README](TECHNICAL-README.md) · [**Probalo online →**](https://aporia-bbb3f7.webflow.io/)
+[English](README.md) · [Español](README_ES.md) · [Technical README](TECHNICAL-README.md) · [**Beta anterior en Webflow →**](https://aporia-bbb3f7.webflow.io/)
 
 > Tirale a APORIA los mensajes, capturas y preferencias que ya tenés. APORIA encuentra los planes que realmente funcionan para el grupo.
 >
@@ -62,7 +62,7 @@ El problema es siempre parecido: varias personas tienen información válida, pe
 
 APORIA es nuestro proyecto para [Build With AI: Basics de Devpost](https://learn-ai-basics.devpost.com/). El repo empezó el 25 de septiembre de 2026, dentro del período de entrega y con solo el scaffolding inicial. El scope, el PRD y el primer borrador técnico se hicieron con Devpost Learn Skill Pack; el desarrollo continúa con las skills personales de la dueña del proyecto.
 
-Hoy el producto incluye búsqueda de salas por número, acceso de observador antes de participar, chat compartido, aportes de texto y capturas, confirmación de extracciones por quien las subió, información alimentaria que no afecta la evaluación, propuestas de candidatos con aceptación explícita, evaluación determinista y sugerencias acotadas sobre qué habría que cambiar. Las salas tienen cierre en modo lectura, papelera de siete días y recuperación anonimizada por mail. Para habilitar la gestión del creador hay que configurar el envío de correo en Cloudflare; Google todavía no está integrado.
+Hoy el producto incluye búsqueda de salas por número, acceso de observador antes de participar, chat compartido, aportes de texto y capturas, confirmación de extracciones por quien las subió, información alimentaria que no afecta la evaluación, propuestas de candidatos con aceptación explícita, evaluación determinista y sugerencias acotadas sobre qué habría que cambiar. Las salas tienen cierre en modo lectura, papelera de siete días y recuperación anonimizada por mail. Para habilitar la gestión del creador hay que configurar el envío de correo en Cloudflare; Google todavía no está integrado. Las rutas públicas tienen límites de ráfaga para búsquedas, creación, ingreso y acceso del creador. Cada participante y sala también tienen límites separados de cinco extracciones y cinco búsquedas de candidatos por minuto. Cloudflare aplica esos límites aproximados por ubicación: se pueden superar y no equivalen a un presupuesto compartido de uso o gasto. Siguen faltando controles contra abuso distribuido. Ver [cómo funcionan los límites de Cloudflare](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/).
 
 El producto conserva cuatro niveles coherentes:
 
@@ -73,20 +73,22 @@ El producto conserva cuatro niveles coherentes:
 
 La participación estructurada, las encuestas, las grillas y el panel Verify forman parte del destino siguiente, sobre la misma arquitectura.
 
-## Probalo ahora
+## Beta anterior
 
-**[aporia-bbb3f7.webflow.io](https://aporia-bbb3f7.webflow.io/)** — sin cuenta y sin instalar nada. Creá una sala, tirá adentro algo de ese caos que normalmente queda en el grupo y mirá cómo se convierte en una respuesta concreta.
+La beta anterior sigue alojada en **[Webflow](https://aporia-bbb3f7.webflow.io/)** y es independiente de la versión actual del repo. La nueva versión está pensada para usar un frontend en Vercel con el backend existente de Cloudflare Worker/D1; ese despliegue todavía no está configurado ni verificado.
 
 ## Documentos de diseño
 
 - [Decisión de arquitectura](docs/APORIA-ARCHITECTURE-DECISION.md)
 - [Revisión de arquitectura red team](docs/red-team/APORIA-RED-TEAM-ARCHITECTURE.md)
-- [Plan de rondas red team y variant analysis](docs/red-team/APORIA-ROUND-PLAN.md) — las rondas formales todavía no empezaron.
+- [Plan de rondas red team y variant analysis](docs/red-team/APORIA-ROUND-PLAN.md) — hallazgos, arreglos, evidencia y verificaciones de despliegue pendientes.
 - [README técnico](TECHNICAL-README.md) — stack, arquitectura, estado de implementación y límites verificables.
 
 ## Privacidad y alojamiento
 
-En la instancia oficial, las salas y los mensajes viven en un backend compartido de APORIA. Quien tenga el link o el número de reunión puede leer la sala; compartilos solo con tu grupo. Las capturas se mandan a Gemini para extraer información y APORIA descarta sus bytes al terminar el procesamiento. Las propuestas y aportes confirmados permanecen en la sala hasta que se borra o se vence su período de recuperación.
+En la instancia oficial, las salas y los mensajes viven en un backend compartido de APORIA. Quien tenga el link o el número de reunión puede leer la sala; compartilos solo con tu grupo. Para procesar aportes, APORIA envía a Gemini el texto o la captura y los nombres visibles de quienes participan; “Buscar ideas” también envía el objetivo de la sala y las restricciones confirmadas. Cuando Gemini responde, APORIA no conserva el texto o la imagen originales ni su hash en la propuesta. Los fragmentos extraídos quedan disponibles para quien aportó mientras cada dato espera revisión; después de confirmarlo o marcarlo como duplicado, se borran. Los datos estructurados siguen sujetos a las reglas de retención de la sala. Evitá enviar información sensible. Las condiciones de Google dependen del nivel de la API: en el nivel gratuito pueden usar prompts y respuestas para mejorar productos, incluso con revisión humana; en servicios pagos no se usan para mejorar productos, pero puede haber registros limitados por seguridad y requisitos legales. APORIA no puede verificar el nivel de la clave configurada. Leé el [mapa de datos y condiciones del proveedor](docs/PRIVACY-DATA-FLOW.md) antes de usar una instalación.
+
+Los límites de ráfaga de IA no imponen un tope global de llamadas ni de gasto. Un conjunto suficientemente distribuido de participantes puede superar en conjunto los límites individuales; la cuota y la facturación del proyecto Gemini del operador siguen gobernando el uso del proveedor.
 
 El creador puede cerrar la sala en modo lectura y después mandarla a papelera. Al reabrirla en modo lectura se quitan nombres, chat y aportes vinculados a participantes. Al eliminarla, se conservan durante siete días solo opciones y datos agregados permitidos para recuperarla; una tarea horaria procesa hasta 100 salas vencidas por ejecución. Cuando ya no quedan salas ni enlaces de acceso vigentes para esa cuenta, también se borra la cuenta del creador. La configuración de Gemini y correo pertenece al operador del backend.
 

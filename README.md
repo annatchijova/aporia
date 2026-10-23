@@ -6,7 +6,7 @@
 
 **Stop arguing. Start planning.**
 
-[English](README.md) · [Español](README_ES.md) · [Technical README](TECHNICAL-README.md) · [**Try it live →**](https://aporia-bbb3f7.webflow.io/)
+[English](README.md) · [Español](README_ES.md) · [Technical README](TECHNICAL-README.md) · [**Previous Webflow beta →**](https://aporia-bbb3f7.webflow.io/)
 
 > Drop the messages, screenshots and preferences. APORIA finds the plans that actually work for everyone.
 >
@@ -42,28 +42,30 @@ Once you build something that can turn a pile of human noise into "here's what's
 
 APORIA is our project for [Devpost's Build With AI: Basics](https://learn-ai-basics.devpost.com/). Its repository began on September 25, 2026, during the challenge's submission period, with only project scaffolding. The initial scope, PRD, and technical draft were created with the Devpost Learn Skill Pack; continued development now uses the project owner's personal engineering skills.
 
-## Try it right now
+## Previous beta
 
-**[aporia-bbb3f7.webflow.io](https://aporia-bbb3f7.webflow.io/)** — no account, no install. Start a room, drop in something messy, and watch it turn into an actual answer.
+The earlier beta is still hosted on **[Webflow](https://aporia-bbb3f7.webflow.io/)**. It is separate from the current repository version. The new version is intended to use a Vercel frontend with the existing Cloudflare Worker/D1 backend; that deployment has not yet been configured or verified.
 
-The app includes meeting-number lookup, observer-first access, shared chat, text and screenshot evidence, contributor-confirmed extraction, informational dietary notes, Gemini candidate proposals, deterministic evaluation, and bounded change suggestions. Room creators can close a room read-only, move it to a seven-day trash, and recover an anonymized read-only snapshot by email. Email delivery must be configured in Cloudflare; Google sign-in is not implemented. Public lookup, room creation, and joins have Cloudflare edge burst caps; provider-call quotas and distributed abuse controls are still outstanding.
+The app includes meeting-number lookup, observer-first access, shared chat, text and screenshot evidence, contributor-confirmed extraction, informational dietary notes, Gemini candidate proposals, deterministic evaluation, and bounded change suggestions. Room creators can close a room read-only, move it to a seven-day trash, and recover an anonymized read-only snapshot by email. Email delivery must be configured in Cloudflare; Google sign-in is not implemented. Public lookup, room creation, joins, and creator access have burst caps. Each participant-room pair also has separate limits of five extraction calls and five candidate-discovery calls per minute. Cloudflare applies these approximate limits separately by location, so they can be exceeded and do not make a shared daily/monthly provider budget or hard spend ceiling. Distributed abuse controls remain outstanding. See [Cloudflare's rate-limit behavior](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/).
 
 ## Design documents
 
 - [Architecture decision](docs/APORIA-ARCHITECTURE-DECISION.md)
 - [Red-team architecture review](docs/red-team/APORIA-RED-TEAM-ARCHITECTURE.md)
-- [Red-team round and variant-analysis plan](docs/red-team/APORIA-ROUND-PLAN.md) — rounds 1–3 are partial and still open.
+- [Red-team round and variant-analysis plan](docs/red-team/APORIA-ROUND-PLAN.md) — findings, fixes, evidence, and open deployment checks.
 - [Technical README](TECHNICAL-README.md) — stack, architecture, and implementation status, for anyone who wants to see how it actually works.
 
 ## Privacy and hosting
 
-The official instance stores rooms and messages in APORIA's shared backend. Anyone with a room link or meeting number can read that room, so share it only with your group. For AI processing, APORIA sends the submitted text or screenshot and participant display names to Gemini; “Find ideas” also sends the room goal and confirmed constraints. APORIA discards screenshot bytes and image fingerprint metadata after processing, but extracted source snippets and proposals remain under the room's retention rules. Avoid sending sensitive information. Google's data-use terms differ by Gemini API tier: the Free tier may use prompts and responses to improve products, including human review; Paid services don't use them for product improvement, but may log them for a limited time for abuse monitoring and legal requirements. APORIA cannot verify the configured key's tier in the app. Read the [data flow and provider policy](docs/PRIVACY-DATA-FLOW.md) before using a deployment.
+The official instance stores rooms and messages in APORIA's shared backend. Anyone with a room link or meeting number can read that room, so share it only with your group. For AI processing, APORIA sends the submitted text or screenshot and participant display names to Gemini; “Find ideas” also sends the room goal and confirmed constraints. After Gemini responds, APORIA does not retain the raw submitted text/image or its hash in the proposal artifact. Extracted source snippets remain available to the uploader while a claim awaits review, then are cleared when that claim is confirmed or identified as a duplicate; structured claims and room facts remain under the room's retention rules. Avoid sending sensitive information. Google's data-use terms differ by Gemini API tier: the Free tier may use prompts and responses to improve products, including human review; Paid services don't use them for product improvement, but may log them for a limited time for abuse monitoring and legal requirements. APORIA cannot verify the configured key's tier in the app. Read the [data flow and provider policy](docs/PRIVACY-DATA-FLOW.md) before using a deployment.
+
+The AI burst limits do not enforce a global call or cost budget. A sufficiently distributed set of participants can exceed the per-participant limits in aggregate; the operator's Gemini project quota and billing settings still govern provider-side use.
 
 The creator can close a room read-only, then move it to trash. Reopening it read-only removes names, chat, and participant-linked contributions. Deletion keeps only the approved option details and aggregate data for seven days so the room can be recovered; the hourly purge processes up to 100 expired rooms per run. When an account has no remaining rooms or unexpired access links, APORIA deletes it too. The backend operator controls Gemini and email credentials.
 
 A separately hosted frontend needs its exact origin enabled by the backend operator. For Vercel deployments, the operator can optionally allow `https://*.vercel.app`; that broadens browser access to any HTTPS Vercel-hosted frontend and does not authenticate API callers. Apache-2.0 lets anyone clone and self-host APORIA, with their own backend, database, and credentials; it does not grant access to APORIA's shared backend or Gemini key.
 
-The new version's deployment direction is a Vercel-hosted frontend with the existing Cloudflare Worker/D1 API. The previous Webflow beta remains separate. This deployment has not yet been configured or verified; see [ADR-0007](docs/decisions/ADR-0007-vercel-frontend-cloudflare-api.md).
+The deployment direction is a Vercel-hosted frontend with the existing Cloudflare Worker/D1 API. See [ADR-0007](docs/decisions/ADR-0007-vercel-frontend-cloudflare-api.md).
 
 ## License
 

@@ -27,6 +27,12 @@ Google's currently published [Gemini API Additional Terms](https://ai.google.dev
 
 Therefore, do not describe APORIA as having zero provider retention. A public operator should verify the project tier and current Google terms before accepting real participant data. This repository cannot confirm the tier configured for any running instance.
 
+## Request limits and aggregate usage
+
+The Worker configures independent burst limits of five extraction requests and five candidate-discovery requests per room-participant pair per 60 seconds. This helps bound repeated use by one participant. Cloudflare documents these Worker rate-limit bindings as approximate and local to each Cloudflare location; requests can exceed the configured threshold before counters synchronize, and locations do not share a worldwide counter ([Cloudflare Rate Limiting docs](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/), checked 2026-10-23).
+
+APORIA does not currently apply a strict shared daily/monthly call quota, track token usage/cost, or set a provider spend ceiling. Multiple rooms, participant identities, locations, retries, or distributed callers can increase aggregate provider usage. Google project quota and billing settings remain operator-controlled and were not checked. Do not treat the per-participant burst limits as a cost guarantee.
+
 ## Other stores and unknowns
 
 - **Cloudflare Worker/D1:** stores room snapshots, events, participants, proposals, chat, and lifecycle state. The code paths are mapped; account-level backups, point-in-time recovery, request/trace logs, support access, and operator exports were not audited.
