@@ -1,5 +1,7 @@
 # Round 27 — AI evidence across close and reopen
 
+**Later disposition (Round 39, 2026-10-23):** New contribution artifact text and reviewed claim snippets are redacted as documented in [Round 39](ROUND-39-SOURCE-RETENTION.md). This supersedes the retention behavior observed in this historical trace for new submissions. Existing database rows were not migrated; the deployed database was not inspected.
+
 **Status:** Integrated lifecycle behavior reproduced; no code defect confirmed. Evidence-retention policy remains open.
 **Threat model:** A room participant submits human text, reviews the extracted claim, and an authenticated creator closes or reopens the room. The audit checks what remains in local D1 and what participants can retrieve at each state.
 **Scope:** Text artifact, extracted `sourceText`, confirmed claim, generated candidate suggestions, proposal list authorization, close, and reopen. Gemini was mocked.
@@ -22,4 +24,4 @@ No implementation change was made. The observed close/reopen behavior matches th
 
 ## Verification and limits
 
-The R27 regression uses synthetic contribution text and candidate data, a mocked Gemini provider, an inserted local creator session, and local Wrangler D1. It passed with the R19–R26 integration cases. It does not exercise real provider retention, backups, logs, browser behavior, production D1, or deployed Cloudflare. D1 still retains reviewed evidence for as long as a room remains closed; reopen/delete/purge cleanup is the application boundary tested here.
+The R27 regression uses synthetic contribution text and candidate data, a mocked Gemini provider, an inserted local creator session, and local Wrangler D1. It passed with the R19–R26 integration cases. It does not exercise real provider retention, backups, logs, browser behavior, production D1, or deployed Cloudflare. At the time of this historical run, D1 retained reviewed evidence while a room remained closed; see the later R39 disposition above.

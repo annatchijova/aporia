@@ -29,3 +29,5 @@ Added `GET /api/rooms/:id/proposals`. It requires an active room and a valid par
 ## Verification and limits
 
 `npx vitest run --config vitest.d1.config.mjs --reporter verbose` passes seven local D1 tests; `npm run typecheck` and `npm run build` pass. Synthetic Gemini output and a minimal local D1 schema were used. No real Gemini call, production data, browser reload, or deployed Worker was involved. Provider-side retention and the time for which pending source text should be retained remain product/privacy policy questions.
+
+**Later disposition (Round 39, 2026-10-23):** the pending source text remains available to its uploader while awaiting review, then is cleared atomically with its confirmation/duplicate decision. New raw text/image submissions are not retained in proposal artifacts after provider processing. This does not change the original Round 25 evidence or verify provider/platform copies; see [Round 39](ROUND-39-SOURCE-RETENTION.md).

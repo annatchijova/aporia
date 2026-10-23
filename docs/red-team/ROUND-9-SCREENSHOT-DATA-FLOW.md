@@ -28,7 +28,7 @@ The old [ADR-0003](../decisions/ADR-0003-l2-screenshot-artifacts.md) described a
 
 ## Privacy boundary and open decision
 
-**CODE FACT:** deleting raw image bytes from APORIA's proposal artifact does not delete text extracted from that image. In particular, `claims_json.sourceText` may retain a personal sentence from the screenshot for as long as the active/closed room and proposal remain. The owner should not describe this as “the screenshot data is deleted” without clarifying that the original image bytes are deleted from APORIA while extracted text and confirmed facts may remain under room retention.
+**Historical code fact (before R39):** deleting raw image bytes from APORIA's proposal artifact did not delete text extracted from that image. In particular, `claims_json.sourceText` could remain after review. **Current application behavior:** new text and image submissions are redacted from `artifact_json` after extraction, and each source snippet is cleared when its claim is decided; the structured claim and confirmed fact remain. Pending source snippets remain available to the uploader for review. See [Round 39](ROUND-39-SOURCE-RETENTION.md). External provider and infrastructure copies remain outside this deletion behavior.
 
 ## R9-01 — creator email token could outlive an explicit provider rejection
 
@@ -40,7 +40,7 @@ The old [ADR-0003](../decisions/ADR-0003-l2-screenshot-artifacts.md) described a
 
 **Remaining ambiguity:** if `fetch` throws or times out after the provider may have accepted the email, delivery is unknown. The token is retained so a link that was actually delivered is not invalidated. This is a distributed-write ambiguity; no claim of atomicity across D1 and email is made. A durable outbox/delivery-state design remains a possible later improvement if retries and operator visibility require it.
 
-**Decision still open:** whether to keep `sourceText` in D1 after the uploader confirms or rejects a claim, or redact it immediately after review while retaining only structured facts/provenance. This changes review/audit behavior and retention, so no code change is made before the owner chooses. The existing 7-day recovery snapshot excludes source snippets.
+**Disposition:** the earlier source-retention question is resolved by the narrow Round 39 implementation choice: retain snippets only while claims await uploader review, then clear them as the decision is recorded. The current flow has confirmation/duplicate decisions; no separate rejection operation exists. Structured claims and decision provenance remain. The seven-day recovery snapshot continues to exclude source snippets.
 
 ## Stores not verified from the repository
 
