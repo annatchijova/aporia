@@ -2,11 +2,19 @@ import { assertBoundedText, assertCents, assertMinute, assertWeekday } from '../
 import { ProviderError } from './contracts';
 import type { CandidateDraft } from './contracts';
 
+function parseWarnings(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const warnings = value.filter((item): item is string => typeof item === 'string');
+  if (warnings.length > 16 || warnings.some((warning) => warning.length > 500)) throw new ProviderError('invalid_output', 'candidate warnings exceed provider limits', false);
+  return warnings;
+}
+
 export function parseCandidateProposalResponse(raw: unknown): { candidates: CandidateDraft[]; warnings: string[] } {
   if (!raw || typeof raw !== 'object') throw new ProviderError('invalid_output', 'candidate proposal is not an object', false);
   const body = raw as Record<string, unknown>;
   if (!Array.isArray(body.candidates)) throw new ProviderError('invalid_output', 'candidate proposal has no candidates', false);
-  const candidates: CandidateDraft[] = body.candidates.slice(0, 8).map((item, index) => {
+  if (body.candidates.length > 8) throw new ProviderError('invalid_output', 'candidate proposal exceeds eight candidates', false);
+  const candidates: CandidateDraft[] = body.candidates.map((item, index) => {
     if (!item || typeof item !== 'object') throw new ProviderError('invalid_output', `candidate ${index} is not an object`, false);
     const value = item as Record<string, unknown>;
     const price = value.priceCents === null || value.priceCents === undefined ? null : assertCents(Number(value.priceCents), `candidate ${index} priceCents`);
@@ -22,6 +30,6 @@ export function parseCandidateProposalResponse(raw: unknown): { candidates: Cand
     };
   });
   if (candidates.some((candidate) => candidate.endMinute <= candidate.startMinute)) throw new ProviderError('invalid_output', 'candidate interval is empty', false);
-  const warnings = Array.isArray(body.warnings) ? body.warnings.filter((item): item is string => typeof item === 'string').slice(0, 16) : [];
+  const warnings = parseWarnings(body.warnings);
   return { candidates, warnings };
 }

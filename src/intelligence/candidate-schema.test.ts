@@ -6,8 +6,12 @@ describe('candidate proposal boundary', () => {
     expect(() => parseCandidateProposalResponse({ candidates: [{ title: 'Invalid', weekday: 6, startMinute: 1200, endMinute: 1200, priceCents: null, currency: null, area: null }], warnings: [] })).toThrow('candidate interval is empty');
   });
 
-  it('bounds the provider candidate list', () => {
+  it('rejects provider output beyond the eight-candidate contract', () => {
     const candidates = Array.from({ length: 10 }, (_, index) => ({ title: 'Place ' + index, weekday: 6, startMinute: 1200, endMinute: 1260, priceCents: null, currency: null, area: null }));
-    expect(parseCandidateProposalResponse({ candidates, warnings: [] }).candidates).toHaveLength(8);
+    expect(() => parseCandidateProposalResponse({ candidates, warnings: [] })).toThrow('exceeds eight candidates');
+  });
+
+  it('rejects oversized candidate warnings', () => {
+    expect(() => parseCandidateProposalResponse({ candidates: [], warnings: ['x'.repeat(501)] })).toThrow('warnings exceed provider limits');
   });
 });

@@ -4,7 +4,7 @@
 
 ## Status and epistemic boundary
 
-**Status (2026-10-23):** This repository contains the current React/TypeScript client, Cloudflare Worker API, D1-backed room state, Gemini extraction/discovery, room lifecycle and local red-team coverage. The current workspace version is **not verified as deployed**. The earlier Webflow beta is separate; the planned Vercel frontend with this Worker/D1 backend has not been configured or verified. Local evidence at this revision: 47 unit tests across 11 files; 26 local Wrangler D1 tests across two files; typecheck and production Vite build pass. These checks establish local behavior only. They do not establish current production data, provider settings, deployed configuration, browser behavior, or platform retention. See [the red-team plan](docs/red-team/APORIA-ROUND-PLAN.md) for finding-level evidence and open checks.
+**Status (2026-10-23):** This repository contains the current React/TypeScript client, Cloudflare Worker API, D1-backed room state, Gemini extraction/discovery, room lifecycle and local red-team coverage. The current workspace version is **not verified as deployed**. The earlier Webflow beta is separate; the planned Vercel frontend with this Worker/D1 backend has not been configured or verified. Local evidence at this revision: 54 unit tests across 12 files; 26 local Wrangler D1 tests across two files; typecheck and production Vite build pass. These checks establish local behavior only. They do not establish current production data, provider settings, deployed configuration, browser behavior, or platform retention. See [the red-team plan](docs/red-team/APORIA-ROUND-PLAN.md) for finding-level evidence and open checks.
 
 The implemented product flow includes meeting-code lookup, observer access, shared chat with a server-side five-message-per-participant cap, screenshot/text proposals with uploader review, candidate discovery and human acceptance, deterministic plan evaluation, dietary notes, and creator close/reopen/delete/recovery. Gemini extraction and discovery have separate configured burst limits of five requests per room-participant pair per 60 seconds. Since each room join creates a new participant ID, joining again yields a fresh limiter key. Cloudflare describes these binding counters as approximate and location-local; they are not a global quota or spend cap, so aggregate calls and spend remain unbounded by APORIA. See [its rate-limit documentation](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/).
 
@@ -24,6 +24,8 @@ untrusted human/AI input
 ```
 
 An LLM may interpret heterogeneous input or propose candidates. It is never the authority for availability, constraint satisfaction, ranking validity, or consensus.
+
+Gemini's response body is read with a 256 KiB ceiling before JSON parsing. Extraction accepts at most 64 claims, each with at most eight ambiguity notes; warning and ambiguity strings are limited to 500 characters and 16 warning items per response. Candidate discovery accepts at most the eight candidates requested by its prompt. Outputs beyond those technical ceilings fail as invalid provider output rather than being silently truncated. These ceilings bound this application's handling of a response; they are not provider-side token, account quota, or spend limits. See [Round 43](docs/red-team/ROUND-43-GEMINI-OUTPUT-BOUNDS.md).
 
 ## Client stack
 
@@ -135,7 +137,7 @@ The evaluator must be able to return no feasible plan with a reason trace. Relax
 
 ## Evidence status
 
-Local evidence on 2026-10-23: 47 unit tests across 11 files and 25 tests across two local Wrangler D1 integration files pass; typecheck and production Vite build pass. The D1 suite exercises actual local Worker handlers and synthetic data, not a deployed database. Earlier work exercised a separate Webflow-hosted beta, but that does not establish that the current repository revision is deployed. The planned Vercel frontend/current Worker deployment, current Gemini account tier, and production data remain unverified.
+Local evidence on 2026-10-23: 54 unit tests across 12 files and 26 tests across two local Wrangler D1 integration files pass; typecheck and production Vite build pass. The D1 suite exercises actual local Worker handlers and synthetic data, not a deployed database. Earlier work exercised a separate Webflow-hosted beta, but that does not establish that the current repository revision is deployed. The planned Vercel frontend/current Worker deployment, current Gemini account tier, and production data remain unverified.
 
 Still open: this document does not record a fresh-process determinism run over reordered inputs; browser behavior on the current revision is not verified; global Gemini usage/spend caps and distributed-abuse controls are absent; production configuration and provider tier remain unknown; L5/L6 have no implementation to test. The [red-team plan](docs/red-team/APORIA-ROUND-PLAN.md) tracks more application-level adversarial tests and their limits.
 

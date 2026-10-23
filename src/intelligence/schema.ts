@@ -3,15 +3,27 @@ import { assertBoundedText, assertCents, assertMinute, assertWeekday } from '../
 import { ProviderError } from './contracts';
 
 const claimKinds = new Set<ClaimKind>(['availability', 'budget_max', 'area_preference', 'dietary_note', 'proposal']);
+const MAX_CLAIMS = 64;
+const MAX_AMBIGUITIES = 8;
+const MAX_PROVIDER_TEXT = 500;
+
+function parseStringList(value: unknown, maxItems: number, field: string): string[] {
+  if (!Array.isArray(value)) return [];
+  const strings = value.filter((item): item is string => typeof item === 'string');
+  if (strings.length > maxItems || strings.some((item) => item.length > MAX_PROVIDER_TEXT)) {
+    throw new ProviderError('invalid_output', `${field} exceeds provider limits`, false);
+  }
+  return strings;
+}
 
 function parseClaim(value: unknown, index: number): ClaimProposal {
   if (!value || typeof value !== 'object') throw new ProviderError('invalid_output', `claim ${index} is not an object`);
   const claim = value as Record<string, unknown>;
-  if (typeof claim.id !== 'string' || typeof claim.kind !== 'string' || !claimKinds.has(claim.kind as ClaimKind)) throw new ProviderError('invalid_output', `claim ${index} has invalid identity`);
+  if (typeof claim.id !== 'string' || claim.id.length === 0 || claim.id.length > 128 || typeof claim.kind !== 'string' || !claimKinds.has(claim.kind as ClaimKind)) throw new ProviderError('invalid_output', `claim ${index} has invalid identity`);
   const participantId = claim.participantId === null || typeof claim.participantId === 'string' ? claim.participantId : null;
   const sourceText = typeof claim.sourceText === 'string' ? claim.sourceText.slice(0, 500) : '';
   const confidence = claim.confidence === 'high' || claim.confidence === 'medium' || claim.confidence === 'low' ? claim.confidence : 'unknown';
-  const ambiguity = Array.isArray(claim.ambiguity) ? claim.ambiguity.filter((item): item is string => typeof item === 'string').slice(0, 8) : [];
+  const ambiguity = parseStringList(claim.ambiguity, MAX_AMBIGUITIES, `claim ${index} ambiguity`);
   const raw = claim.value;
   if (!raw || typeof raw !== 'object') throw new ProviderError('invalid_output', `claim ${index} has no typed value`);
   const typed = raw as Record<string, unknown>;
@@ -34,7 +46,8 @@ function parseClaim(value: unknown, index: number): ClaimProposal {
 export function parseExtractionResponse(raw: unknown, artifact: InputArtifact, provider: { name: string; model: string; requestId?: string }): ExtractionProposal {
   if (!raw || typeof raw !== 'object') throw new ProviderError('invalid_output', 'provider response is not an object');
   const body = raw as Record<string, unknown>;
+  if (Array.isArray(body.claims) && body.claims.length > MAX_CLAIMS) throw new ProviderError('invalid_output', 'provider returned too many claims', false);
   const claims = Array.isArray(body.claims) ? body.claims.map(parseClaim) : [];
-  const warnings = Array.isArray(body.warnings) ? body.warnings.filter((item): item is string => typeof item === 'string').slice(0, 16) : [];
+  const warnings = parseStringList(body.warnings, 16, 'provider warnings');
   return { id: crypto.randomUUID(), artifact, claims, warnings, provider, status: 'pending' };
 }

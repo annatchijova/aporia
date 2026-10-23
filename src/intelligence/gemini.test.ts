@@ -47,6 +47,16 @@ describe('GeminiProvider failure boundary', () => {
     await expect(new GeminiProvider({ GEMINI_API_KEY: 'test-key' }).extract({ artifact, participantNames: [] })).rejects.toMatchObject({ code: 'invalid_output', retryable: false });
   });
 
+  it('rejects a provider response body above the 256 KiB limit before JSON parsing', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('x'.repeat(256 * 1024 + 1), { status: 200 })));
+    await expect(new GeminiProvider({ GEMINI_API_KEY: 'test-key' }).extract({ artifact, participantNames: [] })).rejects.toMatchObject({ code: 'invalid_output', message: 'Gemini response exceeded the size limit', retryable: false });
+  });
+
+  it('applies the same body limit to non-success provider responses', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('x'.repeat(256 * 1024 + 1), { status: 400 })));
+    await expect(new GeminiProvider({ GEMINI_API_KEY: 'test-key' }).extract({ artifact, participantNames: [] })).rejects.toMatchObject({ code: 'invalid_output', message: 'Gemini response exceeded the size limit', retryable: false });
+  });
+
   it('fails before network access when the server-side key is missing', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

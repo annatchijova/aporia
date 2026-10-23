@@ -48,6 +48,8 @@ The earlier beta is still hosted on **[Webflow](https://aporia-bbb3f7.webflow.io
 
 The app includes meeting-number lookup, observer-first access, shared chat, text and screenshot evidence, contributor-confirmed extraction, informational dietary notes, Gemini candidate proposals, deterministic evaluation, and bounded change suggestions. Room creators can close a room read-only, move it to a seven-day trash, and recover a limited read-only snapshot by email. Email delivery must be configured in Cloudflare; Google sign-in is not implemented. Public lookup, room creation, joins, and creator access have burst caps. Each participant-room pair also has separate limits of five extraction calls and five candidate-discovery calls per minute. Joining again creates a new participant identity and a new allowance. Cloudflare applies these approximate limits separately by location, so they can be exceeded and do not make a shared daily/monthly provider budget or hard spend ceiling. Distributed abuse controls remain outstanding. See [Cloudflare's rate-limit behavior](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/).
 
+Gemini responses are bounded before the app parses or stores them: 256 KiB per provider response, up to 64 extracted claims, and up to eight candidate suggestions. This limits APORIA's handling of a single response; it does not cap provider tokens or total spend. See the [technical README](TECHNICAL-README.md) and [Round 43](docs/red-team/ROUND-43-GEMINI-OUTPUT-BOUNDS.md).
+
 ## Design documents
 
 - [Architecture decision](docs/APORIA-ARCHITECTURE-DECISION.md)

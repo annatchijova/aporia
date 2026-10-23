@@ -4,6 +4,35 @@ import { parseExtractionResponse } from './schema';
 import { parseCandidateProposalResponse } from './candidate-schema';
 
 interface GeminiEnv { GEMINI_API_KEY?: string; GEMINI_MODEL?: string; }
+const MAX_GEMINI_RESPONSE_BYTES = 256 * 1024;
+
+async function readBoundedResponseText(response: Response): Promise<string> {
+  const contentLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > MAX_GEMINI_RESPONSE_BYTES) {
+    await response.body?.cancel();
+    throw new ProviderError('invalid_output', 'Gemini response exceeded the size limit', false);
+  }
+  if (!response.body) throw new ProviderError('invalid_output', 'Gemini returned an empty response', false);
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let text = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_GEMINI_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw new ProviderError('invalid_output', 'Gemini response exceeded the size limit', false);
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    return text + decoder.decode();
+  } finally {
+    reader.releaseLock();
+  }
+}
 
 export class GeminiProvider implements IntelligenceProvider {
   private readonly model: string;
@@ -30,12 +59,12 @@ export class GeminiProvider implements IntelligenceProvider {
       });
       if (!response.ok) {
         // Read the provider body only to classify the failure. Never relay it to the client.
-        const rawError = await response.text();
         let providerMessage = '';
         try {
-          const parsed = JSON.parse(rawError) as { error?: { message?: unknown } };
+          const parsed = JSON.parse(await readBoundedResponseText(response)) as { error?: { message?: unknown } };
           providerMessage = typeof parsed.error?.message === 'string' ? parsed.error.message : '';
-        } catch {
+        } catch (error) {
+          if (error instanceof ProviderError) throw error;
           providerMessage = '';
         }
         if (response.status === 429) throw new ProviderError('rate_limited', 'Gemini rate limit reached', true);
@@ -45,8 +74,9 @@ export class GeminiProvider implements IntelligenceProvider {
       }
       let payload: { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; responseId?: string };
       try {
-        payload = await response.json() as typeof payload;
-      } catch {
+        payload = JSON.parse(await readBoundedResponseText(response)) as typeof payload;
+      } catch (error) {
+        if (error instanceof ProviderError) throw error;
         throw new ProviderError('invalid_output', 'Gemini returned a non-JSON response', false);
       }
       const text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
