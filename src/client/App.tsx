@@ -25,15 +25,18 @@ const requestFailureMessage = (error: unknown, language: Language, fallback: Key
   error,
   t(language, fallback),
   language === "es"
-    ? "Gemini está limitando las solicitudes. Esperá un momento antes de volver a probar."
-    : "Gemini is rate-limiting requests. Wait a bit before trying again.",
+    ? "Se alcanzó el límite de solicitudes. Esperá un momento antes de volver a probar."
+    : "The request limit was reached. Wait a bit before trying again.",
+  seconds => language === "es"
+    ? `Se alcanzó el límite de solicitudes. Esperá ${seconds} segundos antes de volver a probar.`
+    : `The request limit was reached. Wait ${seconds} seconds before trying again.`,
 );
 
 function readSession(roomId: string): Session | null { try { const value = localStorage.getItem("aporia:" + roomId); return value ? JSON.parse(value) as Session : null; } catch { return null; } }
 async function request<T>(path: string, options: RequestInit = {}, session?: Session, creatorToken?: string): Promise<T> {
   const headers = new Headers(options.headers); headers.set("content-type", "application/json"); if (session) headers.set("x-aporia-session", session.token); if (creatorToken) headers.set("x-aporia-creator", creatorToken);
   const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 15000);
-  try { const response = await fetch(api(path), { ...options, headers, signal: controller.signal }); const raw = await response.text(); const json = response.headers.get("content-type")?.includes("application/json"); let data: (T & { error?: string; code?: string }) | null = null; if (json) try { data = JSON.parse(raw) as T & { error?: string; code?: string }; } catch { data = null; } if (!response.ok) throw new ApiRequestError(data?.error ?? "request_failed", data?.code); if (!data) throw new Error("invalid_response"); return data; } finally { window.clearTimeout(timeout); }
+  try { const response = await fetch(api(path), { ...options, headers, signal: controller.signal }); const raw = await response.text(); const json = response.headers.get("content-type")?.includes("application/json"); let data: (T & { error?: string; code?: string }) | null = null; if (json) try { data = JSON.parse(raw) as T & { error?: string; code?: string }; } catch { data = null; } if (!response.ok) { const retryAfterHeader = response.headers.get("retry-after"); const retryAfter = retryAfterHeader === null ? Number.NaN : Number(retryAfterHeader); const retryAfterSeconds = Number.isInteger(retryAfter) && retryAfter >= 0 ? retryAfter : undefined; throw new ApiRequestError(data?.error ?? "request_failed", data?.code, response.status, retryAfterSeconds); } if (!data) throw new Error("invalid_response"); return data; } finally { window.clearTimeout(timeout); }
 }
 async function creatorRequest<T>(path: string, token: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers); headers.set("content-type", "application/json"); headers.set("x-aporia-creator", token);

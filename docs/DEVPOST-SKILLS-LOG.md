@@ -403,3 +403,10 @@ This log records how the official Build With AI: Basics skills are used in this 
 - **Finding/fix:** The Worker returned HTTP 429 with `code: rate_limited`, but the shared client helper discarded `code`, causing text extraction, screenshot extraction, and candidate discovery to show a generic “try again” message. The helper now preserves structured error codes and those features explain that Gemini is limiting requests and to wait before trying again. No retry delay is guessed.
 - **Evidence:** Worker mock test confirms status 429, code, retryable flag, and no proposal persistence; focused client tests confirm the rate-limit message is selected and unrelated failures keep their prior fallback. Full suite: 41 tests/10 files; local D1: 24 tests; typecheck/build/diff check pass. See [Round 36](red-team/ROUND-36-RATE-LIMIT-CLIENT-ERROR.md).
 - **Limits:** No browser or screen-reader session; the UI render and announcement remain unverified. No Gemini request was made.
+
+## October 22, 2026 — local AI limiter Retry-After variant
+
+- **Used:** Personal `beyond-the-fix` and `variant-analysis` to check the sibling 429 source after Round 36; `resilient-ui-states` to use its server-provided wait hint; `falsifiable-testing` to prove limiter rejection precedes Gemini and persistence.
+- **Finding/fix:** APORIA's own AI limiter also returns 429, with `Retry-After: 60` but without `code: rate_limited`. The first UI fix therefore did not explain this sibling response. `ApiRequestError` now preserves status and valid delta-seconds `Retry-After`; all 429 responses get actionable copy, and this one displays the server's 60-second value.
+- **Evidence:** Worker test forces the local limiter to reject and confirms status/header/body, zero Gemini calls, and zero proposal writes. Client helper test confirms use of the supplied 60 seconds. Full suite: 43 tests/10 files; D1: 24 tests; typecheck/build/diff check pass. See [Round 37](red-team/ROUND-37-APP-LIMITER-RETRY-AFTER.md).
+- **Limits:** No browser or screen-reader run. Cloudflare's deployed limiter window and `Retry-After` timing were not tested.

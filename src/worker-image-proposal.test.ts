@@ -110,6 +110,21 @@ describe('Worker image proposal flow', () => {
     expect(insertedProposals).toHaveLength(0);
   });
 
+  it('preserves the application AI limiter Retry-After header and skips the provider', async () => {
+    const { env, insertedProposals } = fakeEnv();
+    Object.assign(env, { AI_PROPOSAL_LIMITER: { limit: async () => ({ success: false }) } });
+    const extract = vi.spyOn(GeminiProvider.prototype, 'extract');
+
+    const response = await worker.fetch(imageRequest(), env);
+    const payload = await response.json() as { error: string };
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('60');
+    expect(payload.error).toContain('too many AI requests');
+    expect(extract).not.toHaveBeenCalled();
+    expect(insertedProposals).toHaveLength(0);
+  });
+
   it('fails closed when the AI request limiter is unavailable', async () => {
     const { env } = fakeEnv();
     Object.assign(env, { AI_PROPOSAL_LIMITER: { limit: vi.fn().mockRejectedValue(new Error('synthetic limiter failure')) } });
