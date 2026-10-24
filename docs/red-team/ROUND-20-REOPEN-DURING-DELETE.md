@@ -17,9 +17,11 @@ The integration harness starts a delete request and blocks its mocked email-prov
 
 **Disposition:** This is the valid sequential transition `closed → reopened_read_only → trashed`, serialized by the D1 writes. Both operations come from the same authorized creator. No security or data-integrity defect was confirmed. The first request began earlier but commits its room transition after the provider wait, so a second tab can show a successful reopen before the earlier deletion finishes.
 
+**Product decision (October 24, 2026):** the learner confirmed that deletion should complete. This behavior is the desired policy for the hackathon; no code change is needed for that decision.
+
 ## Product boundary
 
-The creator UI renders reopen and delete controls together for a closed room and does not mark either request as busy. The backend therefore permits this cross-tab sequence. If APORIA should make the later user intent win, that needs an explicit lifecycle policy and a state/side-effect design; merely rejecting the delayed delete after its email was sent could leave the creator with a link that cannot restore the room. No code change was made without that policy.
+The creator UI renders reopen and delete controls together for a closed room and does not mark either request as busy. The backend therefore permits this cross-tab sequence. The learner has chosen that deletion still completes if a reopen occurs while the recovery-email delivery is pending. This resolves the product-policy question; it does not add a busy indicator or cancel the already-started deletion.
 
 ## Verification and limits
 

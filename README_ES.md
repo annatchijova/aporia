@@ -77,7 +77,7 @@ La participación estructurada, las encuestas, las grillas y el panel Verify for
 
 ## Beta anterior
 
-La beta anterior sigue alojada en **[Webflow](https://aporia-bbb3f7.webflow.io/)** y es independiente de la versión actual del repo. La nueva versión está pensada para usar un frontend en Vercel con el backend existente de Cloudflare Worker/D1; ese despliegue todavía no está configurado ni verificado.
+La beta anterior sigue alojada en **[Webflow](https://aporia-bbb3f7.webflow.io/)** y es independiente de la versión actual del repo. La página de la hackathon se va a apagar cuando termine el concurso; la demo puede seguir disponible. La nueva versión está pensada para usar un frontend en Vercel con el backend existente de Cloudflare Worker/D1; ese despliegue todavía no está configurado ni verificado. Quien clone APORIA después configura su propio despliegue y sus credenciales de proveedor, y revisa los términos de ese servicio.
 
 ## Documentos de diseño
 

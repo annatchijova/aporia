@@ -271,13 +271,17 @@ El PRD queda en estado `approved`. El flujo de habilidades todavía no había ge
 
 **Es lo que dije desde momento 1 y una gran pista de esto es que el repositorio tiene Licencia Apache 2**
 
-## Capacidad y costos compartidos — pendiente
+## Capacidad y costos compartidos — parcialmente respondido
 
 Para implementar límites sin bloquear una reunión normal ni dejar abierto el consumo de recursos, ¿cuál es el máximo de participantes por sala y qué cuota de uso de Gemini debería tener cada sala durante el hackathon? La prueba local llegó a 20 participantes y 20 opciones, pero eso no define el máximo del producto. También hace falta saber si preferís un tope estricto de llamadas por sala o un presupuesto máximo de uso/costo.
 
 **Dato técnico para decidir:** el límite actual de cinco llamadas por operación está asociado al ID de participante. El código genera una identidad y una sesión nuevas en cada ingreso a la sala, incluso si vuelve a entrar la misma persona; por eso ese límite se puede renovar al volver a ingresar. Cloudflare además aplica sus contadores de forma aproximada y separada por ubicación. No hay hoy un cupo total por sala o un presupuesto global.
 
-## Precisión del ciclo de vida — pendiente
+**Sí, está bien, para hackathon la demo 5, para video voy a hacer con 20 o menos, no lo decidí aún, dependerá del guion**
+
+Esto registra tamaños previstos para la demo y el video; no define el máximo general de participantes ni un cupo de Gemini o de gasto. Esos límites no se implementan como si hubieran quedado aprobados.
+
+## Precisión del ciclo de vida — respondido
 
 Si empezás a eliminar una sala y el envío del correo de recuperación sigue pendiente, mientras tanto la reabrís desde otra pestaña, ¿qué debería pasar cuando termine el envío?
 
@@ -285,10 +289,16 @@ Si empezás a eliminar una sala y el envío del correo de recuperación sigue pe
 - Que reabrir cancele el borrado pendiente. ¿Qué debería pasar con el correo que ya se envió?
 - Otra cosa.
 
-Estado: pregunta surgida de la ronda red team 20; no implica una decisión tomada.
+Estado: pregunta surgida de la ronda red team 20; para este caso, la respuesta indica que el borrado debe completarse aunque el correo ya esté pendiente.
 
-## Alcance de los datos de recuperación — pendiente
+**Me parece una pregunta muy rebuscada para un hackathon. Que se complete el borrado**
+
+## Alcance de los datos de recuperación — respondido para la hackathon
 
 Tu respuesta para el PRD dice que la recuperación debe conservar solo información que no sea personal: lugares propuestos, el código de la próxima reunión y conteos, sin nombres ni chat. El código actual conserva títulos libres de opciones, horarios y precios, conteos y un código opcional de la sala siguiente. No comprueba que un título libre no incluya un nombre o dato personal, y un conteo de un grupo chico podría permitir inferencias. El resumen recuperado solo lo puede leer quien creó la sala, pero no se comprobó que sea anónimo.
 
 ¿Querés mantener esos campos aceptando que no se puede prometer anonimato, o preferís reducir alguno para cumplir de forma más estricta con “solo información no personal”? Si querés reducirlos, indicá cuáles.
+
+**Que para hackathon no se promete anonimato**
+
+Para esta presentación se mantiene la descripción actual del resumen y no se promete anonimato. Esta respuesta no afirma que los campos retenidos sean anónimos ni cambia cuáles se guardan; no se quitó ningún campo.

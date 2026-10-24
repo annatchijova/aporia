@@ -15,7 +15,7 @@ An event-based shared chat and planning space for people who have just met and w
 4. The group uses the shared chat and APORIA's planning flow to coordinate an after-party. Chat messages are short coordination updates. Text or a screenshot can be submitted in the planning flow; Gemini extracts useful information, including availability, area, and dietary restrictions. Every extracted fact remains a proposal until a person approves it. Raw images are deleted after processing.
 5. The website offers a `Demo` mode in which a judge can click through the observer and participant experiences using an ordinary single-person image example, without supplying their own photos. The demo does not simulate the unusual duplicate-image case; that behavior is implemented in the real product flow. A separate real flow is also available. The demo should make visible how AI helps reduce disorganization and friction and helps the group optimize an outing.
 6. After the event, the room creator closes the room. It becomes read-only, with no new contributions. The group is thanked and pointed to another room for a future get-together.
-7. The creator can request deletion of the room and its data. During the seven-day recovery period, the creator can restore only nonpersonal information that is not chat content, such as proposed places, the next meeting's code, and counts of people who signed up and attended. Names of people who interacted are removed. After seven days, room data is permanently deleted automatically.
+7. The creator can request deletion of the room and its data. During the seven-day recovery period, the creator can restore an allowlisted snapshot without attendee names or chat. It may include proposed places, the next meeting's code, and counts of people who signed up and attended. For the hackathon, APORIA does not promise that this snapshot is anonymous. After seven days, room data is permanently deleted automatically.
 
 The intended real-world success is that the group has the after-party, enjoys it, and decides to create another room for a future gathering. A demo can show the app journey; it cannot prove a future offline gathering has already happened. Source: `scope.md > What "Working" Looks Like`.
 
@@ -73,7 +73,7 @@ Source: `scope.md > The Core Loop` and `The POC Boundary`.
 - Closing marks the event as finished and makes the room read-only, with no new contributions. The group is thanked and pointed toward a separate room for a future event. APORIA is intended to help with event coordination rather than become a general social network.
 - The room creator can delete a completed room.
 - The creator can recover a deleted room through email during a limited period before the room and its data are permanently deleted.
-- A restored room contains only nonpersonal information unrelated to chat, such as proposed places, the next meeting's code, and sign-up/attendance counts. Names of people who interacted are deleted.
+- A restored room omits chat and attendee names and contains only the current recovery allowlist, such as proposed places, the next meeting's code, and sign-up/attendance counts. For the hackathon, APORIA does not promise this snapshot is anonymous.
 - A closed room can be reopened in read-only mode to recall proposed places. Reopening removes names, chat, source submissions, and participant-linked facts, retaining only the proposed options and an aggregate participant count.
 - A seven-day trash period followed by automatic permanent deletion is approved.
 - After creating a room, the creator is asked for the event context/title (for example, “After post Hackathon”). Google sign-in is the recommended option; registration using a disposable email must also be available. The creator's chosen account/email is used for recovery.
@@ -88,7 +88,7 @@ Source: `scope.md > The Core Loop` and `The POC Boundary`.
 - **Analysis failure:** show a static image with an error message and a touch of humor, as the learner requested.
 - **Demo flow:** judge can click through observer and participant behavior using a supplied image example, or choose the real flow.
 - **Closed room:** event is marked finished; the room is read-only, has no new contributions, and directs the group to another room.
-- **Deleted room / trash:** the creator requests deletion of the room and its data. Recovery by the creator's account is possible for seven days and restores only nonpersonal, non-chat information; names are removed. After seven days, the data is automatically deleted permanently.
+- **Deleted room / trash:** the creator requests deletion of the room and its data. Recovery by the creator's account is possible for seven days and restores the allowlisted non-chat summary; names are removed. For the hackathon, anonymity is not promised. After seven days, the data is automatically deleted permanently.
 
 ## Product Decisions
 
@@ -110,6 +110,12 @@ Source: `scope.md > The Core Loop` and `The POC Boundary`.
 - Duplicate facts from one participant are idempotent; a matching contribution from another participant remains separately attributed. This is real product behavior, not a demo-only simulation.
 - Keep the existing React/TypeScript, Cloudflare Worker, D1, and Gemini architecture. Source: learner instruction and `scope.md > The POC Boundary`.
 
+## Learner clarifications — October 24, 2026
+
+- For the hackathon presentation, do not promise anonymity for the recovery snapshot. The existing documented fields remain; no recovery fields were removed. This is a hackathon communication decision, not a proof that retained data is anonymous.
+- If the creator reopens a room while deletion is waiting for recovery-email delivery, deletion should still complete. Round 20 already exercised this order locally; the learner confirmed that this behavior is the desired policy.
+- Use five people as the hackathon demo planning target. The video may show 20 or fewer people; the exact number depends on the script and is undecided. These are presentation targets, not a hard product capacity or a Gemini usage/spend quota. No code limit or global budget is approved by this answer.
+
 ## What We're Building
 
 - A room creation and meeting-number entry flow for an event group.
@@ -127,7 +133,7 @@ Source: `scope.md > The Core Loop` and `The POC Boundary`.
 
 - A broad ephemeral social feed beyond the event room: the learner wants APORIA to fulfill a specific coordination purpose, not become another social network.
 - Zero-knowledge identity protection: the learner considers it overengineering for this proof of concept.
-- Per-group self-hosted backends: deployment and backend-sharing details remain for the technical plan; self-hosting is not a new product behavior in this PRD.
+- Post-hackathon clones can be independently deployed with the operator's own backend and provider credentials; that is deployment guidance, not a separate in-product self-hosting flow.
 
 ## Possible Later Enhancements
 

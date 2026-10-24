@@ -33,6 +33,8 @@ The learner wants to use APORIA with people they meet at events to coordinate wh
 
 The proof of concept should let reviewers enter a room by meeting number, see a shared chat, follow the planning flow, and observe a room being closed and deleted after the event. The intended real-world outcome is that the group enjoys the after-party and chooses to create another room for a future get-together. An accidental deletion should be recoverable. A demo can show the product behavior without claiming that a future real-world gathering has already happened.
 
+For the hackathon presentation, the learner's planning target is five people in the demo. The video may show 20 or fewer people; the final count depends on the script and is not decided yet. These are presentation targets, not approved product-wide participant or Gemini spending limits.
+
 Judges need to replay the image flow without providing their own photos. The learner later clarified that uploaded images should be visible to Gemini for extraction and deleted after processing, rather than retained for the group. Duplicate facts from one participant are handled idempotently, while matching facts from different participants retain their attribution. A synthetic fixture is now present at `public/demo/availability-sample.png` and can be loaded into the ordinary screenshot preview; a guided one-click demo mode is not implemented. This later clarification supersedes the earlier answer that images should remain available to the group.
 
 ## The POC Boundary
@@ -49,7 +51,6 @@ Judges need to replay the image flow without providing their own photos. The lea
 ## Later
 
 - A broader ephemeral social feed beyond the shared event-room chat.
-- A per-group self-hosting model; its relationship to the learner's intended shared backend is still undecided.
 
 ## Explicitly Cut
 
@@ -72,3 +73,9 @@ Judges need to replay the image flow without providing their own photos. The lea
 - Configure the shared backend's exact allowed origins and abuse/cost limits before external frontends use it.
 - Add the synthetic image fixture and judge-facing demo flow without using the duplicate case as its fixture.
 - The initial chat uses two-second polling; the hourly Worker Cron Trigger handles purge. Measure usage before adding a push transport.
+
+## Learner clarifications — October 24, 2026
+
+- For this hackathon, the recovery snapshot is not promised to be anonymous. The current fields stay in the documented allowlist; no fields were removed.
+- If a room is reopened while deletion is waiting for recovery-email delivery, deletion should still complete. This matches the Round 20 local induction; no code change was needed for this policy answer.
+- The official hackathon page is temporary and will end after the hackathon; the demo may remain available. People who want to use APORIA afterward can clone the Apache-2.0 repository, deploy it where they choose, configure their own Gemini/provider credentials, and review that provider's terms. This does not create a Gemini usage quota for the shared hackathon backend.

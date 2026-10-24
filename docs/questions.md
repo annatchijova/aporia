@@ -279,13 +279,17 @@ Current state (October 12, 2026): the PRD is approved and `devpost/spec.md` has 
 
    **Your answer:** That's what I've been saying from the very beginning and a big clue to this is that the repository has an Apache 2 License.
 
-## Shared capacity and costs — pending
+## Shared capacity and costs — partially answered
 
 To implement limits without blocking a normal gathering or leaving resource use open, what is the maximum number of participants per room, and what Gemini usage quota should each room have during the hackathon? The local probe reached 20 participants and 20 options, but that does not define the product maximum. We also need to know whether you prefer a strict cap on calls per room or a maximum usage/cost budget.
 
 **Technical information for this decision:** the current limit of five calls per operation is tied to a participant ID. The code creates a new identity and session on each room entry, including when the same person joins again; therefore, that limit can be renewed by rejoining. Cloudflare also applies its counters approximately and separately by location. There is currently no total allowance per room or global budget.
 
-## Lifecycle clarification — pending
+**Your answer:** Yes, that's fine. For the hackathon, the demo is 5; for the video I'll do 20 or fewer, I haven't decided yet, it'll depend on the script.
+
+This records planned sizes for the demo and video; it does not set a general participant maximum or a Gemini usage/spend quota. Those limits must not be implemented as if they had been approved.
+
+## Lifecycle clarification — answered
 
 If you start deleting a room and sending the recovery email is still pending, while that is happening you reopen it from another tab, what should happen when the send finishes?
 
@@ -293,10 +297,16 @@ If you start deleting a room and sending the recovery email is still pending, wh
 - Reopening cancels the pending deletion. What should happen to the email that has already been sent?
 - Something else.
 
-Status: question raised by red-team Round 20; no decision is implied.
+Status: question raised by red-team Round 20. For this case, the answer is that deletion should complete even if the email is already pending.
 
-## Scope of recovery data — pending
+**Your answer:** I think this is a very convoluted question for a hackathon. Let the deletion be completed.
+
+## Scope of recovery data — answered for the hackathon
 
 Your PRD answer says recovery should keep only information that is not personal: proposed places, the next meeting's code, and counts, with no names or chat. Current code keeps free-form option titles, schedules and prices, counts, and an optional next-room code. It does not check that a free-form title contains no name or personal detail, and a count from a small group could allow inferences. Only the room creator can read the recovered summary, but its anonymity has not been established.
 
 Do you want to keep these fields while accepting that anonymity cannot be promised, or would you prefer to reduce any of them to follow “only nonpersonal information” more strictly? If you want to reduce them, specify which ones.
+
+**Your answer:** For the hackathon, anonymity is not promised.
+
+For this submission, the current description of the recovery snapshot remains and no anonymity is promised. This answer does not claim the retained fields are anonymous or change which fields are stored; no fields were removed.
