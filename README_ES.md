@@ -82,6 +82,7 @@ La beta anterior sigue alojada en **[Webflow](https://aporia-bbb3f7.webflow.io/)
 ## Documentos de diseño
 
 - [Decisión de arquitectura](docs/APORIA-ARCHITECTURE-DECISION.md)
+- [Guía para autohospedar](docs/autohospedaje.md) — configuración independiente en Cloudflare, con frontend opcional en Vercel.
 - [Revisión de arquitectura red team](docs/red-team/APORIA-RED-TEAM-ARCHITECTURE.md)
 - [Plan de rondas red team y variant analysis](docs/red-team/APORIA-ROUND-PLAN.md) — hallazgos, arreglos, evidencia y verificaciones de despliegue pendientes.
 - [README técnico](TECHNICAL-README.md) — stack, arquitectura, estado de implementación y límites verificables.
@@ -95,6 +96,8 @@ Los límites de ráfaga de IA no imponen un tope global de llamadas ni de gasto.
 El creador puede cerrar la sala en modo lectura y después mandarla a papelera. Al reabrirla en modo lectura se quitan nombres, chat y aportes vinculados a participantes. Al eliminarla, se conservan durante siete días los títulos, horarios y precios de las opciones, los conteos agregados y, opcionalmente, el número de la sala siguiente. Esos datos todavía pueden identificar un evento o vincular dos salas. El creador puede recuperarla mediante un link de un solo uso; la sala recuperada sigue en modo lectura. Una tarea horaria procesa hasta 100 salas vencidas por ejecución. Cuando ya no quedan salas ni enlaces de acceso vigentes para esa cuenta, también se borra la cuenta del creador. La configuración de Gemini y correo pertenece al operador del backend.
 
 Si hospedás un frontend aparte, el operador del backend tiene que habilitar su origen exacto. Para despliegues en Vercel puede permitir opcionalmente `https://*.vercel.app`; eso habilita el acceso desde cualquier frontend HTTPS hospedado en Vercel y no autentica a quienes llaman a la API. Si clonás APORIA, Apache 2.0 te permite desplegar tu propia app, pero tenés que configurar tu propio backend, base de datos y credenciales; el repo no te da acceso al backend compartido ni a su clave de Gemini.
+
+Para poner en marcha una instalación independiente, seguí la [guía para autohospedar](docs/autohospedaje.md). El flujo recomendado sirve frontend y API desde un único Worker de Cloudflare; Vercel queda como alternativa para alojar solo el frontend. La guía parte de la configuración actual del repo, pero todavía no se validó en una cuenta nueva.
 
 ## Licencia
 

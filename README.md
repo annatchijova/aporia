@@ -53,6 +53,7 @@ Gemini responses are bounded before the app parses or stores them: 256 KiB per p
 ## Design documents
 
 - [Architecture decision](docs/APORIA-ARCHITECTURE-DECISION.md)
+- [Self-hosting guide](docs/SELF-HOSTING.md) — independent Cloudflare setup, with optional Vercel frontend.
 - [Red-team architecture review](docs/red-team/APORIA-RED-TEAM-ARCHITECTURE.md)
 - [Red-team round and variant-analysis plan](docs/red-team/APORIA-ROUND-PLAN.md) — findings, fixes, evidence, and open deployment checks.
 - [Technical README](TECHNICAL-README.md) — stack, architecture, and implementation status, for anyone who wants to see how it actually works.
@@ -60,6 +61,8 @@ Gemini responses are bounded before the app parses or stores them: 256 KiB per p
 ## Privacy and hosting
 
 The official instance stores rooms and messages in APORIA's shared backend. Anyone with a room link or meeting number can read an active or closed room; after reopening, the old link exposes only a read-only archive with participant-linked data removed. A room in trash is hidden, and a recovered room's snapshot is readable only by its creator. The recovery snapshot is limited, but it is **not guaranteed anonymous**: it retains option titles and schedules, prices, aggregate counts, and may retain the next room's meeting number. Share room links only with your group. For AI processing, APORIA sends the submitted text or screenshot and participant display names to Gemini; “Find ideas” also sends the room goal and confirmed constraints. After Gemini responds, APORIA does not retain the raw submitted text/image or its hash in the proposal artifact. Extracted source snippets remain available to the uploader while a claim awaits review, then are cleared when that claim is confirmed or identified as a duplicate; structured claims and room facts remain under the room's retention rules. Avoid sending sensitive information. Google's data-use terms differ by Gemini API tier: the Free tier may use prompts and responses to improve products, including human review; Paid services don't use them for product improvement, but may log them for a limited time for abuse monitoring and legal requirements. APORIA cannot verify the configured key's tier in the app. Read the [data flow and provider policy](docs/PRIVACY-DATA-FLOW.md) before using a deployment.
+
+To run an independent instance, use the [self-hosting guide](docs/SELF-HOSTING.md). It covers the current one-Worker Cloudflare setup and an optional Vercel frontend; a fresh-account deployment has not yet been validated.
 
 The AI burst limits do not enforce a global call or cost budget. A sufficiently distributed set of participants can exceed the per-participant limits in aggregate; the operator's Gemini project quota and billing settings still govern provider-side use.
 
