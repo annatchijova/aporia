@@ -310,3 +310,9 @@ Do you want to keep these fields while accepting that anonymity cannot be promis
 **Your answer:** For the hackathon, anonymity is not promised.
 
 For this submission, the current description of the recovery snapshot remains and no anonymity is promised. This answer does not claim the retained fields are anonymous or change which fields are stored; no fields were removed.
+
+### Local demo and recording — answer from October 24, 2026
+
+**I don't want the demo mode to make real calls to Gemini; the recording mode should. And that one can be local.**
+
+The demo uses a sample walkthrough without real calls to Gemini. To record the product, use the normal local flow with real Gemini.

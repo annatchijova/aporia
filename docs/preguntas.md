@@ -302,3 +302,9 @@ Tu respuesta para el PRD dice que la recuperación debe conservar solo informaci
 **Que para hackathon no se promete anonimato**
 
 Para esta presentación se mantiene la descripción actual del resumen y no se promete anonimato. Esta respuesta no afirma que los campos retenidos sean anónimos ni cambia cuáles se guardan; no se quitó ningún campo.
+
+### Demo local y grabación — respuesta del 24/10/2026
+
+**El modo demo no quiero que haga llamadas reales a gemini, el modo de grabación sí. Y ese puede ser local.**
+
+La demo usa un recorrido de muestra sin llamadas reales a Gemini. Para grabar el producto se usa el flujo normal local con Gemini real.

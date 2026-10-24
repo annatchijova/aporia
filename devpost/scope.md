@@ -46,7 +46,7 @@ Judges need to replay the image flow without providing their own photos. The lea
 - Include a distinct informational dietary-restrictions section in the planning experience. It is implemented outside the constraint model and does not affect candidate feasibility or ranking.
 - Let the group close and delete a completed event room, with a way to recover accidental deletion.
 - Preserve the existing text/image intake, human confirmation of extracted facts, candidate planning, and constraint evaluation unless a later approved plan narrows them.
-- Let judges replay the image-submission flow without bringing their own image. Gemini processes uploaded images, which should be deleted after processing. A synthetic fixture is implemented; the guided Demo mode remains to be built.
+- Let judges replay the image-submission flow without bringing their own image. Gemini processes uploaded images, which should be deleted after processing. A synthetic fixture and browser-local sample walkthrough are implemented; the walkthrough uses prepared results and does not call Gemini.
 
 ## Later
 
@@ -57,13 +57,13 @@ Judges need to replay the image flow without providing their own photos. The lea
 - Replacing the existing architecture: the learner explicitly asked to keep it.
 - Treating this proof of concept as a complete privacy or production-readiness solution: room access, image retention, deletion permissions, and recovery need deployment verification and broader abuse controls.
 
-## Current Project State (updated October 12, 2026)
+## Historical project checkpoint (October 12, 2026)
 
 - **Implemented in source:** room creation and link-based joining, meeting-number lookup, read-only observer access to options/chat, D1-backed chat with a server-enforced five-message cap, text and screenshot submission, Gemini extraction, contributor-only claim approval, image preview confirmation and redaction of image bytes and derived image metadata after processing, informational dietary notes, same-person duplicate recognition, manual and AI-proposed candidate plans, deterministic evaluation, and relaxation suggestions.
 - **Persistence present:** additive migrations `0003_meeting_codes_chat.sql`, `0004_creator_accounts_lifecycle.sql`, and `0005_redact_image_metadata.sql` add meeting codes, room messages, per-claim review decisions, creator accounts, lifecycle state, and redaction of stored image fingerprints/metadata. All three migrations have been applied to the local Wrangler D1; no production D1 has been configured or migrated.
 - **Implemented in code; partially verified locally:** synthetic D1 probes exercised single-use creator-link consumption, owner-only close/reopen, removal of attendee names/chat/participant-linked rows, recovery, and the scheduled purge. Live email issuance and the successful delete-plus-email flow remain unverified because Resend is not configured. Recovery retains candidate titles and details, aggregate counts, and an optional next-room code; these fields are not guaranteed anonymous. Google sign-in is absent.
 - **Implemented burst protection:** Cloudflare Worker Rate Limiting bindings cap meeting-code lookup at 30/10 seconds, room creation at 3/60 seconds, and joins at 60/10 seconds per client IP. Local boundary probes passed; Cloudflare's counters are per-location/eventually consistent, so these are not global quotas or distributed-abuse protection.
-- **Still missing:** guided one-click demo mode, Gemini/provider cost quotas, distributed abuse controls, deployed D1 setup, email delivery, browser/email verification, and final validation of external frontend hosting. Exact-origin CORS, an opt-in Vercel origin pattern, and the configurable frontend API origin are implemented in source but not deployed or cross-origin verified.
+- **At that checkpoint:** guided one-click demo mode, Gemini/provider cost quotas, distributed abuse controls, deployed D1 setup, email delivery, browser/email verification, and final validation of external frontend hosting were still missing. Exact-origin CORS, an opt-in Vercel origin pattern, and the configurable frontend API origin were implemented in source but not deployed or cross-origin verified.
 - **Verification:** `npm run typecheck`, `git diff --check`, and `npx wrangler types` pass. Direct Worker+D1 local probes verified room lookup, observer chat reads, joining, five-message enforcement, replay handling, claim attribution/ownership and duplicate handling (including one same-claim race), creator-link consumption/expired-link rejection, close/reopen, recovery, purge, rejection of wrong JSON types/media types, and basic malformed-JSON/body-size boundaries. Rate-limit boundary probes returned 429 at lookup 31, create 4, and join 61. Confirmed findings R1-01 through R1-03 and R2-01 were fixed and checked; R3-01's local burst caps also hold at their configured boundaries. Red-team rounds 1–3 remain open; live email issuance, successful delete/email, recovery-expiry boundary timing, broad concurrency, deeper body-stream boundaries, provider quotas, full build, browser behavior, Cloudflare edge behavior, and deployment remain unverified. Historical test claims in project documentation are not current verification.
 - **History:** the repository's initial commit on September 25, 2026 contains scaffolding; product direction and app code appear in later commits that day. This scope was drafted on October 12 from the learner's answers and repository state, not from a plan that existed in September.
 
@@ -71,7 +71,7 @@ Judges need to replay the image flow without providing their own photos. The lea
 
 - Configure and validate Resend email delivery and the app origin in the target Worker environment; Google sign-in is optional future work.
 - Configure the shared backend's exact allowed origins and abuse/cost limits before external frontends use it.
-- Add the synthetic image fixture and judge-facing demo flow without using the duplicate case as its fixture.
+- At that checkpoint, add the synthetic image fixture and judge-facing demo flow without using the duplicate case as its fixture.
 - The initial chat uses two-second polling; the hourly Worker Cron Trigger handles purge. Measure usage before adding a push transport.
 
 ## Learner clarifications — October 24, 2026
@@ -79,3 +79,11 @@ Judges need to replay the image flow without providing their own photos. The lea
 - For this hackathon, the recovery snapshot is not promised to be anonymous. The current fields stay in the documented allowlist; no fields were removed.
 - If a room is reopened while deletion is waiting for recovery-email delivery, deletion should still complete. This matches the Round 20 local induction; no code change was needed for this policy answer.
 - The official hackathon page is temporary and will end after the hackathon; the demo may remain available. People who want to use APORIA afterward can clone the Apache-2.0 repository, deploy it where they choose, configure their own Gemini/provider credentials, and review that provider's terms. This does not create a Gemini usage quota for the shared hackathon backend.
+
+## Current implementation update — October 24, 2026
+
+- The landing page links to `?mode=demo`, a sample walkthrough with fictional room data held in browser state, the existing deterministic evaluator, and a prepared interpretation of the synthetic screenshot. It does not call Gemini or the room API. `?mode=recording` opens the real app flow with a recording label; run that route locally with Gemini configured to make real provider calls.
+- The existing logo is `docs/logoaporia.png`; the synthetic screenshot fixture is `public/demo/availability-sample.png`.
+- Local verification recorded October 23–24: 56 unit tests across 12 files, 26 local Wrangler/D1 tests across two files, typecheck, and production build passed. This is local code verification, not user-impact or deployed-service evidence.
+- The seven-day recovery period is approved in `devpost/prd.md`; the earlier “not approved” sentence in `docs/preguntas.md` reflects an intermediate checkpoint and is superseded by the later answer. Creator access uses email links; Google sign-in is not implemented.
+- A complete browser recording, real email delivery, hosted deployment, and account-specific provider configuration remain operational steps. No hosted deployment is claimed here.
