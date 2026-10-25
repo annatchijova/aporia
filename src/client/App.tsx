@@ -74,7 +74,7 @@ export function App() {
 }
 
 function LiveApp({ recordingMode = false }: { recordingMode?: boolean }) {
-  const [language, setLanguage] = useState<Language>(() => { try { return localStorage.getItem("aporia:language") === "en" ? "en" : "es"; } catch { return "es"; } });
+  const [language, setLanguage] = useState<Language>(() => { const requested = new URLSearchParams(location.search).get("lang"); if (requested === "en" || requested === "es") return requested; try { return localStorage.getItem("aporia:language") === "en" ? "en" : "es"; } catch { return "es"; } });
   const [theme, setTheme] = useState<Theme>(() => { try { return localStorage.getItem("aporia:theme") === "dark" ? "dark" : "light"; } catch { return "light"; } });
   const [roomId, setRoomId] = useState(() => new URLSearchParams(location.search).get("room"));
   const [session, setSession] = useState<Session | null>(() => roomId ? readSession(roomId) : null);

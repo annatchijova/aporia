@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="1672" viewBox="0 0 940 1672" role="img" aria-label="Sample group chat screenshot">
+  <rect width="940" height="1672" fill="#fff"/>
+  <text x="102" y="61" font-family="Arial,sans-serif" font-size="36" font-weight="700" fill="#111">9:41</text>
+  <g fill="#222"><rect x="755" y="34" width="40" height="24" rx="5"/><path d="M812 40h12v20h-12zM830 35h12v25h-12zM848 29h12v31h-12z"/><path d="M875 37q22-20 44 0l-22 25z"/></g>
+  <path d="M60 130l-25 25 25 25" fill="none" stroke="#8175df" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="470" cy="155" r="59" fill="#eeecff"/><circle cx="448" cy="145" r="13" fill="#8175df"/><circle cx="470" cy="137" r="15" fill="#8175df"/><circle cx="492" cy="145" r="13" fill="#8175df"/><path d="M426 176q0-27 22-27t22 27M448 178q0-31 22-31t22 31M470 176q0-27 22-27t22 27" fill="#8175df"/>
+  <circle cx="850" cy="155" r="7" fill="#8175df"/><circle cx="880" cy="155" r="7" fill="#8175df"/><circle cx="910" cy="155" r="7" fill="#8175df"/><path d="M0 231h940" stroke="#e9e8ef" stroke-width="2"/>
+  <text x="205" y="659" font-family="Arial,sans-serif" font-size="36" fill="#74738a">Demo</text>
+  <circle cx="101" cy="729" r="56" fill="#eeecff"/><circle cx="101" cy="712" r="17" fill="#fff"/><path d="M67 765q0-34 34-34t34 34" fill="#fff"/>
+  <rect x="194" y="677" width="681" height="168" rx="49" fill="#eeecff"/>
+  <text x="232" y="741" font-family="Arial,sans-serif" font-size="39" fill="#10103b">I can do Saturday after 8.</text>
+  <text x="232" y="795" font-family="Arial,sans-serif" font-size="39" fill="#10103b">I’m vegetarian.</text>
+  <path d="M0 1490h940" stroke="#e9e8ef" stroke-width="2"/><circle cx="91" cy="1574" r="42" fill="#eeecff"/><path d="M91 1553v42m-21-21h42" stroke="#8175df" stroke-width="7" stroke-linecap="round"/>
+  <rect x="162" y="1527" width="714" height="94" rx="47" fill="#fff" stroke="#e8e7ef" stroke-width="2"/><text x="203" y="1587" font-family="Arial,sans-serif" font-size="31" fill="#9c9baa">Write a message...</text>
+  <path d="M822 1552l32 18-32 19 7-17z" fill="#8175df"/>
+</svg>
