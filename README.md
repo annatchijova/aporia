@@ -44,7 +44,7 @@ Instead of treating each new message as an isolated fragment, APORIA helps parti
 
 **Different lives. One shared plan.**
 
-<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2019-14-46.png" alt="APORIA shared room with group planning context" width="900"></p>
+<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2018-45-50.png" alt="APORIA shared room with group planning context" width="900"></p>
 
 ## The experience: from the first invitation to the final decision
 
@@ -56,7 +56,7 @@ Create a room and invite others through a shareable link or meeting number. Part
 
 The room becomes the common point of reference as the group develops its plans.
 
-<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2019-14-09.png" alt="APORIA room entry and planning flow" width="900"></p>
+<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2018-46-00.png" alt="APORIA room entry and planning flow" width="900"></p>
 
 ### 02. Let everyday information become useful.
 
@@ -66,6 +66,7 @@ They write messages. They send screenshots. They mention a budget while discussi
 
 APORIA is designed around that reality. Participants can contribute information in the forms they already use, including messages and screenshots, alongside explicit planning details.
 
+<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2019-00-36.png" alt="APORIA landing and room creation flow" width="900"></p>
 <p align="center"><img src="visual/1.jpeg" alt="A participant sharing availability in a chat screenshot" width="300"> <img src="visual/2.jpeg" alt="A participant sharing budget and location details in a chat screenshot" width="300"></p>
 
 ### 03. Make understanding a collaborative act.
@@ -76,7 +77,7 @@ This distinction is central to the experience:
 
 **AI helps organize information. The person remains the authority on what they meant.**
 
-<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2019-39-28.png" alt="APORIA reviewing a contribution" width="900"></p>
+<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2019-14-09.png" alt="APORIA reviewing a contribution" width="900"></p>
 
 ### 04. Compare possibilities against what matters.
 
@@ -86,7 +87,7 @@ The comparison is handled by deterministic application logic. The group can unde
 
 Sometimes the useful question is not simply *“Which option is best?”* It is *“What would need to change for another option to become possible?”*
 
-<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2019-39-47.png" alt="APORIA comparing possible plans" width="900"></p>
+<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2019-14-46.png" alt="APORIA comparing possible plans" width="900"></p>
 
 ### 05. Move forward with a shared understanding.
 
@@ -96,7 +97,16 @@ APORIA provides a common reference for that decision: what was contributed, what
 
 When the planning session is finished, the room can be closed. Its creator has a seven-day recovery window.
 
-<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2019-26-09.png" alt="APORIA plan selection experience" width="900"></p>
+<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2019-14-51.png" alt="APORIA plan selection experience" width="900"></p>
+
+### Later moments in the room
+
+<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2019-26-09.png" alt="APORIA room flow" width="900"></p>
+<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2019-39-16.png" alt="APORIA shared room state" width="900"></p>
+<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2019-39-21.png" alt="APORIA room with shared context" width="900"></p>
+<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2019-39-28.png" alt="APORIA contribution review" width="900"></p>
+<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2019-39-39.png" alt="APORIA screenshot contribution flow" width="900"></p>
+<p align="center"><img src="visual/Screenshot%20from%202026-10-25%2019-39-47.png" alt="APORIA final plan comparison" width="900"></p>
 
 ## A Friday night, three different realities
 
